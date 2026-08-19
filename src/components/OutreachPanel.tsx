@@ -101,6 +101,19 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
     }
   }
 
+  // A disabled send button with no explanation is a puzzle. Say which of the
+  // four preconditions is missing.
+  const blockedReason =
+    configured === null
+      ? 'Checking whether sending is set up…'
+      : !configured
+        ? 'Sending is not set up. See the note above.'
+        : !to.trim()
+          ? 'No recipient address yet. The site did not list one, so type it in.'
+          : !subject.trim() || !body.trim()
+            ? 'No draft yet. Generate a proposition, or use Draft with AI.'
+            : null
+
   return (
     <div>
       {lead.emails?.length ? (
@@ -181,17 +194,15 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
           <button
             type="button"
             onClick={() => void send()}
-            disabled={
-              busy !== null || !configured || !to.trim() || !subject.trim() || !body.trim()
-            }
+            disabled={busy !== null || blockedReason !== null}
             className="rounded-sm bg-sage-deep px-5 py-2 text-sm font-medium text-paper hover:bg-sage disabled:opacity-50"
           >
             {busy === 'send'
               ? 'Sending…'
-              : `Send from ${fromAddress ?? 'hello@westringia.com'}`}
+              : `Send from ${fromAddress || 'hello@westringia.com'}`}
           </button>
           <p className="text-xs text-rule-control">
-            Nothing sends without this click. Read it first.
+            {blockedReason ?? 'Nothing sends without this click. Read it first.'}
           </p>
         </div>
       </div>
