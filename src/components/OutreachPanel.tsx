@@ -3,6 +3,8 @@ import { useAuth } from '../lib/auth'
 import { updateLead } from '../lib/leads'
 import { INBOUND_LABELS, type Lead, type OutreachEmail } from '../lib/types'
 import { draftEmail, emailConfigured, sendLeadEmail } from '../server/email'
+import { SendIcon, SparklesIcon } from './icons'
+import { Alert, Button, Input, Spinner, Textarea } from './ui'
 
 /**
  * The generated draft stops at "Thanks," so the sender can add their own name.
@@ -124,22 +126,22 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
           {lead.replies.map((r) => (
             <li
               key={r.messageId}
-              className={`border-l-2 bg-paper-card p-4 ${
+              className={`rounded-lg border border-l-2 border-border p-4 ${
                 r.kind === 'reply'
-                  ? 'border-sage'
+                  ? 'border-l-emerald-500'
                   : r.kind === 'auto_reply'
-                    ? 'border-rule-strong'
-                    : 'border-clay'
+                    ? 'border-l-border'
+                    : 'border-l-destructive'
               }`}
             >
-              <p className="text-xs text-rule-control">
+              <p className="text-xs text-muted-foreground">
                 <span
                   className={`font-semibold ${
                     r.kind === 'reply'
-                      ? 'text-sage-deep'
+                      ? 'text-emerald-600 dark:text-emerald-400'
                       : r.kind === 'auto_reply'
-                        ? 'text-rule-control'
-                        : 'text-clay'
+                        ? 'text-muted-foreground'
+                        : 'text-destructive'
                   }`}
                 >
                   {INBOUND_LABELS[r.kind]}
@@ -155,17 +157,17 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
                 {r.matchedLoosely ? ' · matched on address, not on the thread' : ''}
               </p>
               <p className="mt-1 text-sm font-semibold">{r.subject}</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-ink-soft">
+              <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
                 {r.snippet}
               </p>
               {r.kind === 'opt_out' ? (
-                <p className="mt-2 text-xs text-clay">
+                <p className="mt-2 text-xs text-destructive">
                   Stop emailing this lead. The Spam Act gives you five working
                   days to action the request.
                 </p>
               ) : null}
               {r.kind === 'bounce' ? (
-                <p className="mt-2 text-xs text-clay">
+                <p className="mt-2 text-xs text-destructive">
                   Nobody read it. Find a better address before trying again.
                 </p>
               ) : null}
@@ -177,8 +179,8 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
       {lead.emails?.length ? (
         <ul className="mb-6 space-y-3">
           {lead.emails.map((m) => (
-            <li key={m.messageId} className="border border-rule bg-paper-card p-4">
-              <p className="text-xs text-rule-control">
+            <li key={m.messageId} className="rounded-lg border border-border p-4">
+              <p className="text-xs text-muted-foreground">
                 To {m.to} ·{' '}
                 {new Date(m.sentAt).toLocaleString('en-AU', {
                   day: 'numeric',
@@ -189,8 +191,8 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
                 · by {m.sentBy}
               </p>
               <p className="mt-1 text-sm font-semibold">{m.subject}</p>
-              <details className="mt-1 text-sm text-ink-soft">
-                <summary className="cursor-pointer text-xs text-sage-deep">
+              <details className="mt-1 text-sm text-muted-foreground">
+                <summary className="cursor-pointer text-xs text-foreground/70 hover:text-foreground">
                   Show body
                 </summary>
                 <p className="mt-2 whitespace-pre-wrap">{m.body}</p>
@@ -201,72 +203,74 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
       ) : null}
 
       {justSent ? (
-        <p className="mb-4 border-l-2 border-sage pl-4 text-sm text-sage-deep">
-          Sent. A copy went to the {fromAddress ?? 'sending'} inbox, and the lead
-          is marked contacted.
-        </p>
+        <div className="mb-4">
+          <Alert tone="success">
+            Sent. A copy went to the {fromAddress ?? 'sending'} inbox, and the
+            lead is marked contacted.
+          </Alert>
+        </div>
       ) : null}
 
       {configured === false ? (
-        <p className="border-l-2 border-clay pl-4 text-sm text-ink-soft">
+        <Alert>
           Sending is not set up. Put the Spacemail address and password in{' '}
           <code>.env</code> as <code>SMTP_USER</code> / <code>SMTP_PASS</code> and
           restart. Drafting still works below.
-        </p>
+        </Alert>
       ) : null}
 
       <div className="mt-4 space-y-3">
         <div className="flex flex-wrap gap-3">
-          <input
+          <Input
             type="email"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             placeholder="who@theirbusiness.com.au"
-            className="min-w-64 flex-1 rounded-sm border border-rule-strong bg-paper-card px-3 py-2 text-sm outline-none placeholder:text-rule-control focus:border-sage-deep"
+            className="min-w-64 flex-1"
           />
-          <button
-            type="button"
+          <Button
+            variant="outline"
             onClick={() => void draft()}
             disabled={busy !== null || !lead.proposition}
-            className="rounded-sm border border-rule-strong px-4 py-2 text-sm hover:border-ink disabled:opacity-50"
             title={lead.proposition ? undefined : 'Generate a proposition first'}
           >
+            {busy === 'draft' ? <Spinner className="size-3.5" /> : <SparklesIcon size={14} />}
             {busy === 'draft' ? 'Drafting…' : 'Draft with AI'}
-          </button>
+          </Button>
         </div>
-        <input
+        <Input
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Subject"
-          className="w-full rounded-sm border border-rule-strong bg-paper-card px-3 py-2 text-sm outline-none placeholder:text-rule-control focus:border-sage-deep"
         />
-        <textarea
+        <Textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={10}
           placeholder="The email. Draft it with AI, then make it yours before sending."
-          className="w-full rounded-sm border border-rule-strong bg-paper-card p-3 text-sm leading-relaxed outline-none placeholder:text-rule-control focus:border-sage-deep"
+          className="leading-relaxed"
         />
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
+        <div className="flex flex-wrap items-center gap-4">
+          <Button
             onClick={() => void send()}
             disabled={busy !== null || blockedReason !== null}
-            className="rounded-sm bg-sage-deep px-5 py-2 text-sm font-medium text-paper hover:bg-sage disabled:opacity-50"
           >
+            {busy === 'send' ? <Spinner className="size-3.5" /> : <SendIcon size={14} />}
             {busy === 'send'
               ? 'Sending…'
               : `Send from ${fromAddress || 'hello@westringia.com'}`}
-          </button>
-          <p className="text-xs text-rule-control">
+          </Button>
+          <p className="text-xs text-muted-foreground">
             {blockedReason ?? 'Nothing sends without this click. Read it first.'}
           </p>
         </div>
       </div>
 
       {error ? (
-        <p className="mt-4 border-l-2 border-clay pl-4 text-sm text-ink">{error}</p>
+        <div className="mt-4">
+          <Alert tone="destructive">{error}</Alert>
+        </div>
       ) : null}
     </div>
   )

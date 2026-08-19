@@ -22,7 +22,7 @@ export function DocFrame({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen bg-paper-deep py-10 print:bg-white print:py-0">
+    <div className="min-h-screen bg-paper-deep py-10 text-ink print:bg-white print:py-0">
       <div className="no-print fixed left-0 right-0 top-0 z-10 border-b border-rule bg-paper">
         <div className="wrap flex items-center justify-between gap-4 py-3">
           <Link
