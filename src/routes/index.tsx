@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppShell, Protected } from '../components/AppShell'
 import { StatusBadge } from '../components/StatusBadge'
 import { subscribeToLeads } from '../lib/leads'
+import { needsAttention, syncReplies, type ReplySyncResult } from '../lib/replies'
 import { LEAD_STATUSES, STATUS_LABELS, type Lead, type LeadStatus } from '../lib/types'
 
 export const Route = createFileRoute('/')({
@@ -19,11 +20,29 @@ function Dashboard() {
   const [leads, setLeads] = useState<Lead[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<LeadStatus | 'all'>('all')
+  const [checking, setChecking] = useState(false)
+  const [checked, setChecked] = useState<ReplySyncResult | null>(null)
 
   useEffect(
     () => subscribeToLeads(setLeads, (e) => setError(e.message)),
     [],
   )
+
+  const awaitingReply = (leads ?? []).some((l) => l.emails?.length)
+
+  async function check() {
+    if (!leads) return
+    setChecking(true)
+    setError(null)
+    setChecked(null)
+    try {
+      setChecked(await syncReplies(leads))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not read the mailbox')
+    } finally {
+      setChecking(false)
+    }
+  }
 
   const counts = useMemo(() => {
     const c = new Map<LeadStatus, number>()
@@ -40,9 +59,21 @@ function Dashboard() {
     <div className="wrap py-10">
       <p className="kicker">01 · Pipeline</p>
       <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-        <h1 className="font-display text-3xl font-semibold tracking-tight">
-          Leads
-        </h1>
+        <div className="flex flex-wrap items-baseline gap-4">
+          <h1 className="font-display text-3xl font-semibold tracking-tight">
+            Leads
+          </h1>
+          {awaitingReply ? (
+            <button
+              type="button"
+              onClick={() => void check()}
+              disabled={checking}
+              className="rounded-sm border border-rule-strong px-3 py-1.5 text-sm hover:border-ink disabled:opacity-60"
+            >
+              {checking ? 'Reading the mailbox…' : 'Check for replies'}
+            </button>
+          ) : null}
+        </div>
         <div className="flex flex-wrap gap-1.5 text-xs">
           <FilterChip
             active={filter === 'all'}
@@ -60,9 +91,30 @@ function Dashboard() {
         </div>
       </div>
 
+      {checked ? (
+        <p className="mt-6 border-l-2 border-sage pl-4 text-sm text-ink-soft">
+          {checked.added === 0
+            ? `Nothing new against the ${checked.watched} ${
+                checked.watched === 1 ? 'email' : 'emails'
+              } we are waiting on.`
+            : `${checked.added} new ${checked.added === 1 ? 'message' : 'messages'}.`}
+          {checked.advanced
+            ? ` ${checked.advanced} ${
+                checked.advanced === 1 ? 'lead' : 'leads'
+              } moved to in conversation.`
+            : ''}
+          {checked.bounces
+            ? ` ${checked.bounces} bounced, so the address is wrong.`
+            : ''}
+          {checked.optOuts
+            ? ` ${checked.optOuts} asked us to stop. Honour that within five working days.`
+            : ''}
+        </p>
+      ) : null}
+
       {error ? (
         <p className="mt-8 border-l-2 border-clay pl-4 text-sm text-ink-soft">
-          Could not load leads: {error}
+          {error}
         </p>
       ) : leads === null ? (
         <p className="mt-8 text-sm text-rule-control">Loading the pipeline…</p>
@@ -96,7 +148,15 @@ function Dashboard() {
                 </span>
                 <span className="text-sm text-rule-control">{lead.domain}</span>
                 <span className="ml-auto flex items-center gap-3">
-                  {lead.proposition ? (
+                  {needsAttention(lead).length ? (
+                    <span className="text-xs font-semibold text-clay">
+                      {needsAttention(lead)
+                        .map((r) => (r.kind === 'bounce' ? 'Bounced' : 'Asked us to stop'))
+                        .join(' · ')}
+                    </span>
+                  ) : lead.replies?.some((r) => r.kind === 'reply') ? (
+                    <span className="text-xs font-semibold text-sage-deep">Replied</span>
+                  ) : lead.proposition ? (
                     <span className="text-xs text-sage-deep">Doc ready</span>
                   ) : null}
                   <StatusBadge status={lead.status} />

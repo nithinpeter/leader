@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { updateLead } from '../lib/leads'
-import type { Lead, OutreachEmail } from '../lib/types'
+import { INBOUND_LABELS, type Lead, type OutreachEmail } from '../lib/types'
 import { draftEmail, emailConfigured, sendLeadEmail } from '../server/email'
 
 /**
@@ -44,7 +44,7 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
   // Draft with AI below re-rolls just the email if this one is not right.
   useEffect(() => {
     const draft = lead.proposition?.email
-    if (!draft || subject || body) return
+    if (!draft || subject || body || lead.doNotContact) return
     setSubject(draft.subject)
     setBody(signOff(draft.body, user?.displayName))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,6 +85,8 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
         sentAt: new Date().toISOString(),
         sentBy: user.email ?? user.uid,
         messageId: result.messageId,
+        // The first touch. The cron counts follow-ups from here.
+        kind: 'cold',
       }
       const advanceStatus = ['new', 'researched', 'doc_ready'].includes(lead.status)
       await updateLead(lead.id, {
@@ -103,8 +105,9 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
 
   // A disabled send button with no explanation is a puzzle. Say which of the
   // four preconditions is missing.
-  const blockedReason =
-    configured === null
+  const blockedReason = lead.doNotContact
+    ? lead.doNotContactReason || 'This lead is marked do not contact.'
+    : configured === null
       ? 'Checking whether sending is set up…'
       : !configured
         ? 'Sending is not set up. See the note above.'
@@ -116,6 +119,61 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
 
   return (
     <div>
+      {lead.replies?.length ? (
+        <ul className="mb-6 space-y-3">
+          {lead.replies.map((r) => (
+            <li
+              key={r.messageId}
+              className={`border-l-2 bg-paper-card p-4 ${
+                r.kind === 'reply'
+                  ? 'border-sage'
+                  : r.kind === 'auto_reply'
+                    ? 'border-rule-strong'
+                    : 'border-clay'
+              }`}
+            >
+              <p className="text-xs text-rule-control">
+                <span
+                  className={`font-semibold ${
+                    r.kind === 'reply'
+                      ? 'text-sage-deep'
+                      : r.kind === 'auto_reply'
+                        ? 'text-rule-control'
+                        : 'text-clay'
+                  }`}
+                >
+                  {INBOUND_LABELS[r.kind]}
+                </span>{' '}
+                · from {r.fromName ? `${r.fromName}, ` : ''}
+                {r.from} ·{' '}
+                {new Date(r.receivedAt).toLocaleString('en-AU', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+                {r.matchedLoosely ? ' · matched on address, not on the thread' : ''}
+              </p>
+              <p className="mt-1 text-sm font-semibold">{r.subject}</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-ink-soft">
+                {r.snippet}
+              </p>
+              {r.kind === 'opt_out' ? (
+                <p className="mt-2 text-xs text-clay">
+                  Stop emailing this lead. The Spam Act gives you five working
+                  days to action the request.
+                </p>
+              ) : null}
+              {r.kind === 'bounce' ? (
+                <p className="mt-2 text-xs text-clay">
+                  Nobody read it. Find a better address before trying again.
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       {lead.emails?.length ? (
         <ul className="mb-6 space-y-3">
           {lead.emails.map((m) => (

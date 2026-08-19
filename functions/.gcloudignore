@@ -1,0 +1,4 @@
+# Only the bundle and its manifest are deployed. Source lives in the repo root.
+src/
+node_modules/
+.gcloudignore

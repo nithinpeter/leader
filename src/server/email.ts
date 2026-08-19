@@ -1,32 +1,15 @@
 import { createServerFn } from '@tanstack/react-start'
 import { generateText, Output } from 'ai'
 import { google } from '@ai-sdk/google'
-import nodemailer from 'nodemailer'
 import { z } from 'zod'
 import type { EmailDraft, Proposition, SiteExtraction } from '../lib/types'
+import { performSend, sendingMailbox, smtpConfigured } from './email-core'
 // One model default for both AI calls. gemini-3-pro-preview, which this used
 // to name, has been retired and now 404s.
 import { DEFAULT_MODEL } from './generate-core'
 
-// Spacemail (spaceship.com) SMTP. Username is the full mailbox address.
-const SMTP_DEFAULTS = { host: 'mail.spacemail.com', port: 465 }
-
-function smtpConfig() {
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
-  if (!user || !pass) return null
-  const port = Number(process.env.SMTP_PORT || SMTP_DEFAULTS.port)
-  return {
-    host: process.env.SMTP_HOST || SMTP_DEFAULTS.host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-    fromName: process.env.SMTP_FROM_NAME || 'Westringia Labs',
-  }
-}
-
 export const emailConfigured = createServerFn({ method: 'GET' }).handler(
-  async () => ({ configured: smtpConfig() !== null, from: process.env.SMTP_USER ?? null }),
+  async () => ({ configured: smtpConfigured(), from: sendingMailbox() }),
 )
 
 const DraftSchema = z.object({
@@ -116,29 +99,4 @@ export const sendLeadEmail = createServerFn({ method: 'POST' })
     if (!input.body?.trim()) throw new Error('A body is required')
     return { to, subject: input.subject.trim(), body: input.body }
   })
-  .handler(async ({ data }): Promise<{ messageId: string; from: string }> => {
-    const config = smtpConfig()
-    if (!config) {
-      throw new Error(
-        'Email is not configured. Set SMTP_USER and SMTP_PASS in .env (Spacemail mailbox address and password).',
-      )
-    }
-
-    const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      auth: config.auth,
-    })
-
-    const info = await transporter.sendMail({
-      from: { name: config.fromName, address: config.auth.user },
-      to: data.to,
-      // Spacemail's SMTP does not copy to the Sent folder; keep a copy in the inbox.
-      bcc: config.auth.user,
-      subject: data.subject,
-      text: data.body,
-    })
-
-    return { messageId: info.messageId, from: config.auth.user }
-  })
+  .handler(async ({ data }) => performSend(data))
