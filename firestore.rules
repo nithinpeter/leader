@@ -1,14 +1,13 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Leader is an internal tool: any signed-in teammate can work the
-    // shared pipeline. Tighten to an email allowlist if the Firebase
-    // project ever hosts anything else.
-    match /leads/{leadId} {
-      allow read, write: if request.auth != null;
-    }
+    // Leader is an internal tool: anyone signed in can read and write the
+    // whole database. Sign-in is Google with no allowlist, so this is any
+    // Google account that reaches the app - narrow the condition to an email
+    // allowlist if the project ever holds anything that is not shared.
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if request.auth != null;
     }
   }
 }

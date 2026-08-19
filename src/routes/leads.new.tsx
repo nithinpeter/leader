@@ -18,6 +18,23 @@ export const Route = createFileRoute('/leads/new')({
 
 type Step = 'idle' | 'extracting' | 'generating' | 'saving'
 
+/** Which stage broke, so the hint can point at the real cause. */
+type Failure = { phase: 'extract' | 'save'; message: string }
+
+const FAILURE_HINT: Record<Failure['phase'], string> = {
+  extract:
+    'Check the address and try again. Some sites block automated readers; for those, add the lead details by hand after a manual look.',
+  save: 'The research came back fine - writing it to Firestore is what failed. A permission-denied code usually means the rules in firestore.rules were never published to the project; check the Rules tab in the Firebase console.',
+}
+
+function messageOf(e: unknown): string {
+  if (!(e instanceof Error)) return 'Something went wrong'
+  // FirebaseError carries the decisive bit in `code` (permission-denied,
+  // unavailable, invalid-argument); the message alone often does not say which.
+  const code = (e as { code?: unknown }).code
+  return typeof code === 'string' ? `${e.message} [${code}]` : e.message
+}
+
 const STEP_COPY: Record<Exclude<Step, 'idle'>, string> = {
   extracting: 'Reading the website – title, copy, services, contact details…',
   generating: 'Writing the proposition and picking two automations worth building…',
@@ -29,27 +46,36 @@ function NewLead() {
   const navigate = useNavigate()
   const [url, setUrl] = useState('')
   const [step, setStep] = useState<Step>('idle')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<Failure | null>(null)
 
   const running = step !== 'idle'
 
   async function run() {
     if (!url.trim() || !user) return
     setError(null)
+
+    let extraction
     try {
       setStep('extracting')
-      const extraction = await extractSite({ data: { url } })
+      extraction = await extractSite({ data: { url } })
+    } catch (e) {
+      console.error(e)
+      setError({ phase: 'extract', message: messageOf(e) })
+      setStep('idle')
+      return
+    }
 
-      setStep('generating')
-      let proposition
-      try {
-        proposition = await generateProposition({ data: { extraction } })
-      } catch (e) {
-        // Keep the research even if generation fails; the doc can be retried.
-        console.error(e)
-        proposition = undefined
-      }
+    setStep('generating')
+    let proposition
+    try {
+      proposition = await generateProposition({ data: { extraction } })
+    } catch (e) {
+      // Keep the research even if generation fails; the doc can be retried.
+      console.error(e)
+      proposition = undefined
+    }
 
+    try {
       setStep('saving')
       const id = await createLead({
         url: extraction.url,
@@ -61,7 +87,8 @@ function NewLead() {
       })
       await navigate({ to: '/leads/$leadId', params: { leadId: id } })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong')
+      console.error(e)
+      setError({ phase: 'save', message: messageOf(e) })
       setStep('idle')
     }
   }
@@ -116,11 +143,8 @@ function NewLead() {
 
       {error ? (
         <div className="mt-8 border-l-2 border-clay pl-4">
-          <p className="text-sm text-ink">{error}</p>
-          <p className="mt-1 text-xs text-rule-control">
-            Check the address and try again. Some sites block automated readers;
-            for those, add the lead details by hand after a manual look.
-          </p>
+          <p className="text-sm text-ink">{error.message}</p>
+          <p className="mt-1 text-xs text-rule-control">{FAILURE_HINT[error.phase]}</p>
         </div>
       ) : null}
     </div>
