@@ -4,7 +4,13 @@ import { AppShell, Protected } from '../components/AppShell'
 import { OutreachPanel } from '../components/OutreachPanel'
 import { StatusBadge } from '../components/StatusBadge'
 import { deleteLead, subscribeToLead, updateLead } from '../lib/leads'
-import { LEAD_STATUSES, STATUS_LABELS, type Lead, type LeadStatus } from '../lib/types'
+import {
+  LEAD_STATUSES,
+  STATUS_LABELS,
+  type EmailDraft,
+  type Lead,
+  type LeadStatus,
+} from '../lib/types'
 import { generateProposition } from '../server/generate'
 
 export const Route = createFileRoute('/leads/$leadId')({
@@ -122,13 +128,22 @@ function LeadDetail() {
 
       <div className="mt-6 flex flex-wrap gap-3 border-y border-rule py-4">
         {p ? (
-          <Link
-            to="/doc/$leadId"
-            params={{ leadId: lead.id }}
-            className="rounded-sm bg-sage-deep px-4 py-2 text-sm font-medium text-paper hover:bg-sage"
-          >
-            Open opportunity doc
-          </Link>
+          <>
+            <Link
+              to="/doc/$leadId"
+              params={{ leadId: lead.id }}
+              className="rounded-sm bg-sage-deep px-4 py-2 text-sm font-medium text-paper hover:bg-sage"
+            >
+              Open opportunity doc
+            </Link>
+            <Link
+              to="/pitch/$leadId"
+              params={{ leadId: lead.id }}
+              className="rounded-sm border border-sage-deep px-4 py-2 text-sm font-medium text-sage-deep hover:bg-paper-deep"
+            >
+              Open pitch doc
+            </Link>
+          </>
         ) : null}
         {lead.extraction ? (
           <button
@@ -159,7 +174,7 @@ function LeadDetail() {
             <p>{p.companySummary}</p>
             <p className="mt-2 text-sm text-rule-control">{p.industry}</p>
           </Section>
-          <Section n={nextN()} title="Westringia's angle">
+          <Section n={nextN()} title="Why we can help them">
             <p>{p.uniqueProposition}</p>
           </Section>
           <Section n={nextN()} title="Two automations worth building">
@@ -178,14 +193,24 @@ function LeadDetail() {
               ))}
             </div>
           </Section>
-          <Section n={nextN()} title="Opening line">
-            <p className="border-l-2 border-sage pl-4 font-display text-lg italic">
-              “{p.openingLine}”
-            </p>
-            <p className="mt-3 text-xs text-rule-control">
+          <Section n={nextN()} title="Cold email draft">
+            {p.email ? (
+              <EmailDraftPanel email={p.email} to={lead.extraction?.emails[0]} />
+            ) : (
+              <>
+                <p className="border-l-2 border-sage pl-4 font-display text-lg italic">
+                  “{p.openingLine}”
+                </p>
+                <p className="mt-3 text-sm text-ink-soft">
+                  This lead was written before email drafting existed. Regenerate
+                  the proposition to get a full draft.
+                </p>
+              </>
+            )}
+            <p className="mt-4 text-xs text-rule-control">
               Written {new Date(p.generatedAt).toLocaleString('en-AU')} ·{' '}
               {p.model === 'template-fallback'
-                ? 'template draft – add a GOOGLE_GENERATIVE_AI_API_KEY for the real thing'
+                ? 'template draft, add a GOOGLE_GENERATIVE_AI_API_KEY for the real thing'
                 : p.model}
             </p>
           </Section>
@@ -256,6 +281,92 @@ function LeadDetail() {
           {notesDirty ? 'Save notes' : 'Saved'}
         </button>
       </Section>
+    </div>
+  )
+}
+
+/**
+ * The cold email, ready to copy into a real mail client. Sent from a normal
+ * inbox as plain text: no tracking pixel, no links, no attachment on the first
+ * touch, which is most of what keeps a first email out of the spam folder.
+ */
+function EmailDraftPanel({ email, to }: { email: EmailDraft; to?: string }) {
+  const [copied, setCopied] = useState<string | null>(null)
+
+  async function copy(what: string, text: string) {
+    await navigator.clipboard.writeText(text)
+    setCopied(what)
+    window.setTimeout(() => setCopied((c) => (c === what ? null : c)), 1800)
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="border border-rule-strong bg-paper-card">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule px-4 py-2.5">
+          <div className="text-sm">
+            <span className="text-rule-control">To </span>
+            <span className="text-ink-soft">{to || 'no address found on the site'}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void copy('first', `${email.subject}\n\n${email.body}`)}
+            className="rounded-sm border border-rule-strong px-3 py-1 text-xs hover:border-ink"
+          >
+            {copied === 'first' ? 'Copied' : 'Copy email'}
+          </button>
+        </div>
+        <div className="border-b border-rule px-4 py-2.5 text-sm">
+          <span className="text-rule-control">Subject </span>
+          <span className="font-medium">{email.subject}</span>
+        </div>
+        <p className="whitespace-pre-wrap px-4 py-4 text-[0.95rem] leading-relaxed">
+          {email.body}
+        </p>
+      </div>
+
+      {email.followUp ? (
+        <div className="border border-rule bg-paper-card">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule px-4 py-2.5">
+            <p className="text-sm">
+              <span className="text-rule-control">Follow-up, about a week later </span>
+              <span className="font-medium">{email.followUpSubject}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                void copy('follow', `${email.followUpSubject}\n\n${email.followUp}`)
+              }
+              className="rounded-sm border border-rule-strong px-3 py-1 text-xs hover:border-ink"
+            >
+              {copied === 'follow' ? 'Copied' : 'Copy follow-up'}
+            </button>
+          </div>
+          <p className="whitespace-pre-wrap px-4 py-4 text-[0.95rem] leading-relaxed text-ink-soft">
+            {email.followUp}
+          </p>
+        </div>
+      ) : null}
+
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-rule-control">
+          Before you send
+        </p>
+        <ul className="mt-2 space-y-1.5 text-sm text-ink-soft">
+          <li>
+            This is the draft as written. Outreach below prefills from it and
+            adds your name, who we are, and the opt-out line before you send.
+          </li>
+          <li>
+            Copying it into your own inbox instead? Add those three yourself. A
+            cold commercial email needs the sender identified and a way to say
+            stop.
+          </li>
+          <li>Send it from a person's address, one at a time. Not a mailing tool, not a bcc list.</li>
+          <li>Leave the docs out of the first email. Attachments and links to a cold address are what trips the filters. Send the doc when they reply.</li>
+          <li>Read the first line out loud. If it could have been sent to any business, rewrite it.</li>
+          <li>Plain text only. No tracking pixel, no images.</li>
+        </ul>
+      </div>
     </div>
   )
 }

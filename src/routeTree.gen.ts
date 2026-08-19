@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DocLeadIdRouteImport } from './routes/doc.$leadId'
 import { Route as LeadsLeadIdRouteImport } from './routes/leads.$leadId'
 import { Route as LeadsNewRouteImport } from './routes/leads.new'
+import { Route as PitchLeadIdRouteImport } from './routes/pitch.$leadId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +41,11 @@ const LeadsNewRoute = LeadsNewRouteImport.update({
   path: '/leads/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PitchLeadIdRoute = PitchLeadIdRouteImport.update({
+  id: '/pitch/$leadId',
+  path: '/pitch/$leadId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/doc/$leadId': typeof DocLeadIdRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/leads/new': typeof LeadsNewRoute
+  '/pitch/$leadId': typeof PitchLeadIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/doc/$leadId': typeof DocLeadIdRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/leads/new': typeof LeadsNewRoute
+  '/pitch/$leadId': typeof PitchLeadIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,12 +70,25 @@ export interface FileRoutesById {
   '/doc/$leadId': typeof DocLeadIdRoute
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/leads/new': typeof LeadsNewRoute
+  '/pitch/$leadId': typeof PitchLeadIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/doc/$leadId' | '/leads/$leadId' | '/leads/new'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/doc/$leadId'
+    | '/leads/$leadId'
+    | '/leads/new'
+    | '/pitch/$leadId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/doc/$leadId' | '/leads/$leadId' | '/leads/new'
+  to:
+    | '/'
+    | '/login'
+    | '/doc/$leadId'
+    | '/leads/$leadId'
+    | '/leads/new'
+    | '/pitch/$leadId'
   id:
     | '__root__'
     | '/'
@@ -75,6 +96,7 @@ export interface FileRouteTypes {
     | '/doc/$leadId'
     | '/leads/$leadId'
     | '/leads/new'
+    | '/pitch/$leadId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -83,6 +105,7 @@ export interface RootRouteChildren {
   DocLeadIdRoute: typeof DocLeadIdRoute
   LeadsLeadIdRoute: typeof LeadsLeadIdRoute
   LeadsNewRoute: typeof LeadsNewRoute
+  PitchLeadIdRoute: typeof PitchLeadIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -122,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeadsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pitch/$leadId': {
+      id: '/pitch/$leadId'
+      path: '/pitch/$leadId'
+      fullPath: '/pitch/$leadId'
+      preLoaderRoute: typeof PitchLeadIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -131,6 +161,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocLeadIdRoute: DocLeadIdRoute,
   LeadsLeadIdRoute: LeadsLeadIdRoute,
   LeadsNewRoute: LeadsNewRoute,
+  PitchLeadIdRoute: PitchLeadIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

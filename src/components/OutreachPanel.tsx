@@ -4,6 +4,22 @@ import { updateLead } from '../lib/leads'
 import type { Lead, OutreachEmail } from '../lib/types'
 import { draftEmail, emailConfigured, sendLeadEmail } from '../server/email'
 
+/**
+ * The generated draft stops at "Thanks," so the sender can add their own name.
+ * Anything actually sent from here also needs the sender identified and a way
+ * to opt out, which the Spam Act asks of a commercial electronic message.
+ */
+function signOff(body: string, senderName?: string | null): string {
+  return [
+    body,
+    senderName || 'The team',
+    'Westringia Labs, Sydney',
+    '02 8531 8610 · westringia.com',
+    '',
+    "If you'd rather not hear from us, just reply and say so. That's the last you'll get.",
+  ].join('\n')
+}
+
 export function OutreachPanel({ lead }: { lead: Lead }) {
   const { user } = useAuth()
   const [fromAddress, setFromAddress] = useState<string | null>(null)
@@ -23,6 +39,16 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
       })
       .catch(() => setConfigured(false))
   }, [])
+
+  // Start from the draft written with the proposition rather than an empty box.
+  // Draft with AI below re-rolls just the email if this one is not right.
+  useEffect(() => {
+    const draft = lead.proposition?.email
+    if (!draft || subject || body) return
+    setSubject(draft.subject)
+    setBody(signOff(draft.body, user?.displayName))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.proposition?.email, user?.displayName])
 
   async function draft() {
     if (!lead.extraction || !lead.proposition) return

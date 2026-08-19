@@ -4,8 +4,9 @@ import { google } from '@ai-sdk/google'
 import nodemailer from 'nodemailer'
 import { z } from 'zod'
 import type { EmailDraft, Proposition, SiteExtraction } from '../lib/types'
-
-const DEFAULT_MODEL = 'gemini-3-pro-preview'
+// One model default for both AI calls. gemini-3-pro-preview, which this used
+// to name, has been retired and now 404s.
+import { DEFAULT_MODEL } from './generate-core'
 
 // Spacemail (spaceship.com) SMTP. Username is the full mailbox address.
 const SMTP_DEFAULTS = { host: 'mail.spacemail.com', port: 465 }

@@ -36,7 +36,7 @@ function messageOf(e: unknown): string {
 }
 
 const STEP_COPY: Record<Exclude<Step, 'idle'>, string> = {
-  extracting: 'Reading the website – title, copy, services, contact details…',
+  extracting: 'Reading the website: title, copy, services, contact details…',
   generating: 'Writing the proposition and picking two automations worth building…',
   saving: 'Saving the lead…',
 }
@@ -100,8 +100,8 @@ function NewLead() {
         Start with their website.
       </h1>
       <p className="mt-3 text-ink-soft">
-        Leader reads the site the way we would – what they do, how the work
-        reaches them – then drafts Westringia&rsquo;s angle and two automations
+        Leader reads the site the way we would, what they do and how the work
+        reaches them, then drafts Westringia&rsquo;s angle and two automations
         worth building. You get an opportunity doc at the end.
       </p>
 
