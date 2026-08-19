@@ -1,0 +1,65 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-paper: #faf9f4;
+  --color-paper-deep: #f2f0e8;
+  --color-paper-card: #ffffff;
+  --color-ink: #1c1b18;
+  --color-ink-soft: #4c4a42;
+  --color-sage: #5f7355;
+  --color-sage-deep: #3f4f38;
+  --color-clay: #a8603c;
+  --color-rule: #dedcd2;
+  --color-rule-strong: #c6c3b6;
+  --color-rule-control: #8d8878;
+
+  --font-display: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+html {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Numbered editorial kicker, in the style of westringia.com section headers */
+.kicker {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-sage-deep);
+}
+
+.wrap {
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  html,
+  body {
+    background: #ffffff;
+  }
+  .print-page {
+    break-inside: avoid;
+  }
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+}
