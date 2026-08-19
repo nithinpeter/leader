@@ -1,10 +1,12 @@
 import {
   createRootRoute,
   HeadContent,
+  Link,
   Outlet,
   Scripts,
 } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { AppShell } from '../components/AppShell'
 import { AuthProvider } from '../lib/auth'
 import appCss from '../styles/app.css?url'
 
@@ -35,6 +37,7 @@ export const Route = createRootRoute({
     ],
   }),
   component: RootComponent,
+  notFoundComponent: NotFound,
 })
 
 function RootComponent() {
@@ -44,6 +47,37 @@ function RootComponent() {
         <Outlet />
       </AuthProvider>
     </RootDocument>
+  )
+}
+
+function NotFound() {
+  return (
+    <AppShell>
+      <div className="wrap max-w-2xl py-20">
+        <p className="kicker">404</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">
+          There is nothing at this address.
+        </h1>
+        <p className="mt-4 text-ink-soft">
+          The page you asked for has been moved, deleted, or never existed. The
+          pipeline is the best place to pick things back up.
+        </p>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Link
+            to="/"
+            className="rounded-sm bg-sage-deep px-4 py-2 text-sm font-medium text-paper hover:bg-sage"
+          >
+            Back to the pipeline
+          </Link>
+          <Link
+            to="/leads/new"
+            className="rounded-sm border border-rule-strong px-4 py-2 text-sm hover:border-ink"
+          >
+            Add a lead
+          </Link>
+        </div>
+      </div>
+    </AppShell>
   )
 }
 
