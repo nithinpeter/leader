@@ -119,13 +119,60 @@ export interface Proposition {
   model: string
 }
 
+/** Where an outbound email sits in the sequence. */
+export type OutreachKind = 'cold' | 'follow_up' | 'reply'
+
 export interface OutreachEmail {
   to: string
   subject: string
   body: string
   sentAt: string
+  /** Email address of the person who sent it, or 'automation' for the cron. */
   sentBy: string
   messageId: string
+  /** Absent on emails sent before the sequence existed. Treat as 'cold'. */
+  kind?: OutreachKind
+  /** True when the cron sent it with nobody reading it first. */
+  auto?: boolean
+  /** Message-ID this answers, so the thread holds together in their client. */
+  inReplyTo?: string | null
+}
+
+/**
+ * What came back. Not every threaded message is a human replying, so the kind
+ * decides how it reads in the pipeline.
+ */
+export type InboundKind =
+  /** A person wrote back. */
+  | 'reply'
+  /** The address is dead. Nobody read it. */
+  | 'bounce'
+  /** Out of office or similar. Nobody read it yet. */
+  | 'auto_reply'
+  /** They asked us to stop. The Spam Act gives us five working days. */
+  | 'opt_out'
+
+export const INBOUND_LABELS: Record<InboundKind, string> = {
+  reply: 'Reply',
+  bounce: 'Bounced',
+  auto_reply: 'Auto reply',
+  opt_out: 'Asked us to stop',
+}
+
+export interface InboundEmail {
+  kind: InboundKind
+  from: string
+  fromName: string
+  subject: string
+  /** The opening of the message, enough to triage from the pipeline. */
+  snippet: string
+  receivedAt: string
+  /** The reply's own Message-ID. Used to avoid recording it twice. */
+  messageId: string
+  /** The Message-ID of the outbound email this answers, when it threaded. */
+  inReplyTo: string | null
+  /** True when matched on the sender address rather than on threading. */
+  matchedLoosely: boolean
 }
 
 export interface Lead {
@@ -141,4 +188,14 @@ export interface Lead {
   extraction?: SiteExtraction
   proposition?: Proposition
   emails?: OutreachEmail[]
+  replies?: InboundEmail[]
+  /**
+   * They asked us to stop, or the address is dead. Nothing may email this lead
+   * again, by hand or on the cron.
+   */
+  doNotContact?: boolean
+  /** Why, for whoever reads the lead later. */
+  doNotContactReason?: string
+  /** Set when the cron last acted on this lead, to keep runs idempotent. */
+  lastAutomatedAt?: string
 }

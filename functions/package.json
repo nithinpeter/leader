@@ -1,0 +1,21 @@
+{
+  "name": "leader-outreach-cron",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cloud Function that checks the outreach mailbox, answers replies and moves the follow-up sequence along.",
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^4.0.45",
+    "@google-cloud/functions-framework": "^4.0.0",
+    "ai": "^7.0.68",
+    "firebase-admin": "^13.0.2",
+    "imapflow": "^1.7.1",
+    "mailparser": "^3.9.15",
+    "nodemailer": "^9.0.5",
+    "zod": "^4.4.3"
+  }
+}

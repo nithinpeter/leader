@@ -289,12 +289,18 @@ function LeadDetail({
                 <EmailDraftPanel email={p.email} to={lead.extraction?.emails[0]} />
               ) : (
                 <>
-                  <p className="border-l-2 border-border pl-4 italic text-muted-foreground">
-                    “{p.openingLine}”
-                  </p>
+                  {p.openingLine ? (
+                    <p className="border-l-2 border-border pl-4 italic text-muted-foreground">
+                      “{p.openingLine}”
+                    </p>
+                  ) : null}
                   <p className="mt-3 text-sm text-muted-foreground">
-                    This lead was written before email drafting existed. Regenerate
-                    the proposition to get a full draft.
+                    This lead was written before email drafting existed, so there
+                    is no draft to send. Hit{' '}
+                    <span className="font-medium text-foreground">
+                      Regenerate proposition
+                    </span>{' '}
+                    above to write one.
                   </p>
                 </>
               )}

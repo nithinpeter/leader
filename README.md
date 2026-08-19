@@ -51,6 +51,115 @@ Keep the docs out of the first email. Attachments and links to a cold address
 are what trip spam filters, so the email offers the write-up rather than
 carrying it, and you send it when they reply.
 
+**Check for replies** on the pipeline reads the mailbox over IMAP and matches
+what came back to the lead that caused it. Matching is on the `Message-ID` we
+stored when sending, found in the reply's `In-Reply-To`/`References`, so it
+still works when you email `info@` and the owner answers from their own
+address. Falls back to matching the sender address. It opens the inbox
+read-only, so nothing is marked as read.
+
+Inbound is sorted into four kinds, because they mean opposite things: a
+**reply** moves the lead to *in conversation*, an **auto reply** means nobody
+has read it yet, a **bounce** means the address is dead, and an **opt-out**
+means stop. Your own BCC copy is filtered out, or every send would look like an
+instant reply.
+
+## The automation
+
+A Cloud Function runs the whole loop every 30 minutes: read the mailbox, record
+what came back, answer anyone who wrote to us, and move the follow-up sequence
+along for anyone who has gone quiet. Every automated send emails you a copy
+immediately, with the full text and why it went.
+
+The four follow-ups each have their own job, because a model given "write a
+follow-up" four times writes the same email four times:
+
+| # | After | What it does |
+|---|-------|--------------|
+| 1 | 4 days | Leads with the *other* automation, not the one already pitched |
+| 2 | 7 days | Shows one concrete step of how it would actually work |
+| 3 | 11 days | Asks plainly whether this is even their call |
+| 4 | 14 days | Closes out, leaves something useful, says it is the last email |
+
+Then it stops. It never sends a fifth, never follows up once somebody has
+replied, and never emails a lead marked `doNotContact`.
+
+**What it will not do**, because these are correctness rather than caution: it
+never replies to a bounce or an auto-responder (that is how mail loops start),
+and an opt-out sets `doNotContact` so nothing can email that lead again, from
+the cron or by hand. The reply drafter is told it may not invent a price, a
+timeline or a commitment; asked for cost it says the two weeks are priced on
+their own and a fixed price comes before any build.
+
+Worth being clear-eyed: this sends email written by a model to real businesses
+with nobody reading it first. `AUTOMATION_ENABLED` must be exactly `true`
+before anything reaches a prospect. Left unset, the function does the whole
+run and logs what it *would* have sent, which is the honest way to watch it for
+a week before letting it out.
+
+### Deploying it
+
+```bash
+npm run build:functions        # bundles functions/src/index.ts to functions/dist
+```
+
+Store the secrets once:
+
+```bash
+printf '%s' 'SPACEMAIL_PASSWORD' | gcloud secrets create leader-smtp-pass --data-file=-
+printf '%s' 'GEMINI_API_KEY'     | gcloud secrets create leader-gemini-key --data-file=-
+printf '%s' "$(openssl rand -hex 24)" | gcloud secrets create leader-cron-secret --data-file=-
+```
+
+Give the function its own service account, with Firestore and secret access:
+
+```bash
+PROJECT=$(gcloud config get-value project)
+SA=leader-cron@$PROJECT.iam.gserviceaccount.com
+gcloud iam service-accounts create leader-cron --display-name="Leader outreach cron"
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="serviceAccount:$SA" --role=roles/datastore.user
+for s in leader-smtp-pass leader-gemini-key leader-cron-secret; do
+  gcloud secrets add-iam-policy-binding "$s" \
+    --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
+done
+```
+
+Deploy. Note `AUTOMATION_ENABLED=false`: it runs and logs but sends nothing
+until you flip it.
+
+```bash
+gcloud functions deploy leader-outreach \
+  --gen2 --runtime=nodejs22 --region=australia-southeast1 \
+  --source=functions --entry-point=runOutreach \
+  --trigger-http --no-allow-unauthenticated \
+  --service-account="$SA" --timeout=900s --memory=512Mi \
+  --set-env-vars=SMTP_USER=hello@westringia.com,SENDER_NAME='Your Name',NOTIFY_EMAIL=you@westringia.com,APP_URL=https://your-app-url,GEMINI_MODEL=gemini-3.1-pro-preview,AUTOMATION_ENABLED=false \
+  --set-secrets=SMTP_PASS=leader-smtp-pass:latest,GOOGLE_GENERATIVE_AI_API_KEY=leader-gemini-key:latest,CRON_SECRET=leader-cron-secret:latest
+```
+
+Then the schedule. **`--max-retry-attempts=0` matters**: a retry after a
+timeout would send the same email twice, and missing one run costs you thirty
+minutes.
+
+```bash
+URL=$(gcloud functions describe leader-outreach --region=australia-southeast1 --gen2 --format='value(serviceConfig.uri)')
+gcloud scheduler jobs create http leader-outreach-30min \
+  --location=australia-southeast1 \
+  --schedule="*/30 * * * *" --time-zone="Australia/Sydney" \
+  --uri="$URL" --http-method=POST \
+  --oidc-service-account-email="$SA" --oidc-token-audience="$URL" \
+  --headers="x-cron-secret=$(gcloud secrets versions access latest --secret=leader-cron-secret)" \
+  --attempt-deadline=900s --max-retry-attempts=0
+```
+
+Watch a few runs, then turn it on:
+
+```bash
+gcloud functions deploy leader-outreach --gen2 --region=australia-southeast1 \
+  --update-env-vars=AUTOMATION_ENABLED=true
+```
+
 No `GOOGLE_GENERATIVE_AI_API_KEY`? The flow still works end to end with a
 clearly-marked template draft, so you can set up Firebase first and add the
 key later.
@@ -85,14 +194,14 @@ Set `GEMINI_MODEL` to override, and check the id is still live if generation sta
 ### Email (Spacemail)
 
 Outgoing mail uses [Spacemail's SMTP](https://www.spaceship.com/knowledgebase/connect-spacemail-to-email-client/):
-host `mail.spacemail.com`, port `465` (SSL) — port `587` (STARTTLS) also works
+host `mail.spacemail.com`, port `465` (SSL). Port `587` (STARTTLS) also works
 on restricted networks. Set `SMTP_USER` to the full mailbox address
 (hello@westringia.com) and `SMTP_PASS` to its password. Every send BCCs the
 mailbox itself, since SMTP sends don't land in the Sent folder.
 
 Two things to keep in mind for cold outreach from your primary domain:
 keep volume low (a handful a day) to protect the mailbox's reputation, and
-leave the identification + opt-out lines in the drafts — commercial email in
+leave the identification and opt-out lines in the drafts. Commercial email in
 Australia falls under the Spam Act.
 
 ### Run

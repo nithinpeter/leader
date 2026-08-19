@@ -12,12 +12,14 @@ import {
   MailIcon,
   MoreHorizontalIcon,
   PlusIcon,
+  RefreshIcon,
   SearchIcon,
   SparklesIcon,
   TrendingUpIcon,
   UsersIcon,
 } from '../components/icons'
 import {
+  Alert,
   Avatar,
   Badge,
   Button,
@@ -27,10 +29,11 @@ import {
   Select,
   Separator,
   Skeleton,
+  Spinner,
   buttonClass,
-  cn,
 } from '../components/ui'
 import { subscribeToLeads } from '../lib/leads'
+import { needsAttention, syncReplies, type ReplySyncResult } from '../lib/replies'
 import { LEAD_STATUSES, STATUS_LABELS, type Lead, type LeadStatus } from '../lib/types'
 
 export const Route = createFileRoute('/')({
@@ -52,11 +55,29 @@ function Dashboard() {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0])
+  const [checking, setChecking] = useState(false)
+  const [checked, setChecked] = useState<ReplySyncResult | null>(null)
 
   useEffect(
     () => subscribeToLeads(setLeads, (e) => setError(e.message)),
     [],
   )
+
+  const awaitingReply = (leads ?? []).some((l) => l.emails?.length)
+
+  async function check() {
+    if (!leads) return
+    setChecking(true)
+    setError(null)
+    setChecked(null)
+    try {
+      setChecked(await syncReplies(leads))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not read the mailbox')
+    } finally {
+      setChecking(false)
+    }
+  }
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -82,19 +103,50 @@ function Dashboard() {
             Every business Leader has researched, and where each conversation is up to.
           </p>
         </div>
-        <Link to="/leads/new" className={buttonClass('default', 'default')}>
-          <PlusIcon size={16} />
-          Add lead
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {awaitingReply ? (
+            <Button
+              variant="outline"
+              onClick={() => void check()}
+              disabled={checking}
+            >
+              {checking ? <Spinner className="size-3.5" /> : <RefreshIcon size={16} />}
+              {checking ? 'Reading the mailbox…' : 'Check for replies'}
+            </Button>
+          ) : null}
+          <Link to="/leads/new" className={buttonClass('default', 'default')}>
+            <PlusIcon size={16} />
+            Add lead
+          </Link>
+        </div>
       </div>
 
       <StatCards leads={leads} />
 
+      {checked ? (
+        <Alert tone={checked.added ? 'success' : 'default'}>
+          {checked.added === 0
+            ? `Nothing new against the ${checked.watched} ${
+                checked.watched === 1 ? 'email' : 'emails'
+              } we are waiting on.`
+            : `${checked.added} new ${checked.added === 1 ? 'message' : 'messages'}.`}
+          {checked.advanced
+            ? ` ${checked.advanced} ${
+                checked.advanced === 1 ? 'lead' : 'leads'
+              } moved to in conversation.`
+            : ''}
+          {checked.bounces
+            ? ` ${checked.bounces} bounced, so the address is wrong.`
+            : ''}
+          {checked.optOuts
+            ? ` ${checked.optOuts} asked us to stop. Honour that within five working days.`
+            : ''}
+        </Alert>
+      ) : null}
+
       {error ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-destructive">
-            Could not load leads: {error}
-          </CardContent>
+          <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
         </Card>
       ) : (
         <Card>
@@ -384,6 +436,36 @@ function LeadTable({
   )
 }
 
+/**
+ * What came back on this lead, at a glance: bounces and opt-outs first
+ * (they need a person to act), then a genuine reply.
+ */
+function InboundBadge({ lead }: { lead: Lead }) {
+  const attention = needsAttention(lead)
+  if (attention.length) {
+    return (
+      <>
+        {attention.map((r) => (
+          <Badge
+            key={r.messageId}
+            className="border-destructive/25 bg-destructive/10 text-destructive"
+          >
+            {r.kind === 'bounce' ? 'Bounced' : 'Asked us to stop'}
+          </Badge>
+        ))}
+      </>
+    )
+  }
+  if (lead.replies?.some((r) => r.kind === 'reply')) {
+    return (
+      <Badge className="border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+        Replied
+      </Badge>
+    )
+  }
+  return null
+}
+
 function LeadRow({ lead }: { lead: Lead }) {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -402,7 +484,10 @@ function LeadRow({ lead }: { lead: Lead }) {
         </div>
       </td>
       <td className="px-4 py-3">
-        <StatusBadge status={lead.status} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge status={lead.status} />
+          <InboundBadge lead={lead} />
+        </div>
       </td>
       <td className="hidden px-4 py-3 md:table-cell">
         {lead.proposition ? (

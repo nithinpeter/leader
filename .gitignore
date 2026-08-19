@@ -12,3 +12,7 @@ dist
 *-adminsdk-*.json
 *service-account*.json
 serviceAccountKey.json
+
+# Cloud Function build output and its local install
+functions/dist
+functions/node_modules
