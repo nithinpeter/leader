@@ -31,18 +31,6 @@ export interface CycleReport {
   errors: string[]
 }
 
-/** The signature identifying us, plus the opt-out the Spam Act requires. */
-function signOff(body: string, senderName: string): string {
-  return [
-    body,
-    senderName,
-    'Westringia Labs, Sydney',
-    '02 8531 8610 · westringia.com',
-    '',
-    "If you'd rather not hear from us, just reply and say so. That's the last you'll get.",
-  ].join('\n')
-}
-
 function sentEmails(lead: Lead): OutreachEmail[] {
   return (lead.emails ?? []).filter((e) => e.kind !== 'reply')
 }
@@ -77,14 +65,13 @@ function unansweredReplies(lead: Lead): InboundEmail[] {
  */
 export async function runCycle(opts: {
   store: LeadStore
-  senderName: string
   /** Injected so a dry run can draft everything without emailing a prospect. */
   send: (input: SendInput) => Promise<{ messageId: string; from: string }>
   /** Called after every automated send, before the next lead is handled. */
   notify: (action: CycleAction, email: { subject: string; body: string }) => Promise<void>
   now?: Date
 }): Promise<CycleReport> {
-  const { store, senderName, send, notify } = opts
+  const { store, send, notify } = opts
   const now = opts.now ?? new Date()
   const report: CycleReport = {
     ranAt: now.toISOString(),
@@ -177,7 +164,8 @@ export async function runCycle(opts: {
       if (waiting.length) {
         const answering = waiting[waiting.length - 1]
         const draft = await draftReply(current, answering)
-        const body = signOff(draft.body, senderName)
+        // The branded footer goes on at send time; the record keeps the draft.
+        const body = draft.body
         const result = await send({
           to: answering.from,
           subject: draft.subject,
@@ -224,7 +212,7 @@ export async function runCycle(opts: {
 
       const step = done + 1
       const draft = await draftFollowUp(current, step)
-      const body = signOff(draft.body, senderName)
+      const body = draft.body
       const first = sentEmails(current)[0]
       const result = await send({
         to,

@@ -60,7 +60,6 @@ http('runOutreach', async (req, res) => {
   try {
     const report = await runCycle({
       store,
-      senderName: process.env.SENDER_NAME || 'The team',
       send,
       // Every automated email tells a person what just went out in their name.
       notify: dryRun ? async () => {} : notifyOfSend,
