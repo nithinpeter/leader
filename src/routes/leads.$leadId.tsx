@@ -182,7 +182,7 @@ function LeadDetail() {
             <p className="mt-3 text-xs text-rule-control">
               Written {new Date(p.generatedAt).toLocaleString('en-AU')} ·{' '}
               {p.model === 'template-fallback'
-                ? 'template draft – add an ANTHROPIC_API_KEY for the real thing'
+                ? 'template draft – add a GOOGLE_GENERATIVE_AI_API_KEY for the real thing'
                 : p.model}
             </p>
           </Section>

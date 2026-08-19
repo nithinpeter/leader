@@ -10,9 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.117.1",
+    "@ai-sdk/google": "^4.0.45",
     "@tanstack/react-router": "^1.170.31",
     "@tanstack/react-start": "^1.168.48",
+    "ai": "^7.0.68",
     "firebase": "^12.17.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

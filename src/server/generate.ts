@@ -1,10 +1,11 @@
 import { createServerFn } from '@tanstack/react-start'
-import Anthropic from '@anthropic-ai/sdk'
+import { generateText, Output } from 'ai'
+import { google } from '@ai-sdk/google'
 import { z } from 'zod'
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import type { Proposition, SiteExtraction } from '../lib/types'
 
-const MODEL = 'claude-opus-5'
+// Override with GEMINI_MODEL if this preview id is retired.
+const DEFAULT_MODEL = 'gemini-3-pro-preview'
 
 const UseCaseSchema = z.object({
   title: z.string(),
@@ -107,34 +108,25 @@ export const generateProposition = createServerFn({ method: 'POST' })
   })
   .handler(async ({ data }): Promise<Proposition> => {
     const { extraction } = data
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
       return templateProposition(extraction)
     }
 
-    const client = new Anthropic()
-    const response = await client.messages.parse({
-      model: MODEL,
-      max_tokens: 16000,
+    const model = process.env.GEMINI_MODEL || DEFAULT_MODEL
+    const { output } = await generateText({
+      model: google(model),
       system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: `Website research for a prospective lead:\n\n${extractionBrief(extraction)}`,
-        },
-      ],
-      output_config: {
-        format: zodOutputFormat(PropositionSchema),
-      },
+      prompt: `Website research for a prospective lead:\n\n${extractionBrief(extraction)}`,
+      output: Output.object({ schema: PropositionSchema }),
     })
 
-    const parsed = response.parsed_output
-    if (!parsed) {
+    if (!output) {
       throw new Error('The model returned an unparseable proposition. Try again.')
     }
     return {
-      ...parsed,
-      useCases: parsed.useCases.slice(0, 2),
+      ...output,
+      useCases: output.useCases.slice(0, 2),
       generatedAt: new Date().toISOString(),
-      model: MODEL,
+      model,
     }
   })

@@ -11,7 +11,7 @@ opportunity doc in the westringia.com house style.
 - Tailwind CSS v4, themed to westringia.com (paper/ink/sage/clay, Source Serif 4 + Public Sans)
 - Firebase Auth (Google sign-in)
 - Cloud Firestore (shared `leads` collection, live-updating pipeline)
-- Anthropic API (`claude-opus-5`) for proposition and doc generation
+- Vercel AI SDK (`ai` + `@ai-sdk/google`) calling Gemini for proposition and doc generation
 
 ## Flow
 
@@ -19,7 +19,7 @@ opportunity doc in the westringia.com house style.
 2. A server function fetches the site (plus up to three about/services pages)
    and extracts what they do: title, copy, headings, services, contact details,
    tech signals.
-3. A second server function asks Claude for the research doc content: company
+3. A second server function asks Gemini (via the Vercel AI SDK) for the research doc content: company
    summary, Westringia's unique proposition for that business, exactly two
    grounded AI automation use cases, where AI fits, and a cold-open line.
 4. The lead lands in the Firestore pipeline (`new → researched → doc_ready →
@@ -28,8 +28,9 @@ opportunity doc in the westringia.com house style.
    *Print / save as PDF* (A4 print styles included) or screenshot it for
    outreach materials.
 
-No `ANTHROPIC_API_KEY`? The flow still works end to end with a clearly-marked
-template draft, so you can set up Firebase first and add the key later.
+No `GOOGLE_GENERATIVE_AI_API_KEY`? The flow still works end to end with a
+clearly-marked template draft, so you can set up Firebase first and add the
+key later.
 
 ## Setup
 
@@ -49,10 +50,12 @@ cp .env.example .env
 4. **Project settings → Your apps → Web app**: register a web app and copy the
    config values into `.env` (`VITE_FIREBASE_*`).
 
-### Anthropic
+### Gemini
 
-Put `ANTHROPIC_API_KEY` in `.env` (server-side only; it is never sent to the
-browser).
+Create an API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+and put it in `.env` as `GOOGLE_GENERATIVE_AI_API_KEY` (server-side only; it
+is never sent to the browser). The model defaults to `gemini-3-pro-preview`;
+set `GEMINI_MODEL` to override.
 
 ### Run
 
