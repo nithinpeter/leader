@@ -27,6 +27,10 @@ opportunity doc in the westringia.com house style.
 5. **Open opportunity doc** renders the Westringia × Company doc — use
    *Print / save as PDF* (A4 print styles included) or screenshot it for
    outreach materials.
+6. **Outreach**: draft the intro email with AI (Westringia voice, one concrete
+   automation, free-call offer, opt-out line), edit it, and send it from
+   hello@westringia.com via Spacemail SMTP. Sends are logged on the lead and
+   the status advances to *contacted*. Nothing sends without a human click.
 
 No `GOOGLE_GENERATIVE_AI_API_KEY`? The flow still works end to end with a
 clearly-marked template draft, so you can set up Firebase first and add the
@@ -56,6 +60,19 @@ Create an API key at [aistudio.google.com/apikey](https://aistudio.google.com/ap
 and put it in `.env` as `GOOGLE_GENERATIVE_AI_API_KEY` (server-side only; it
 is never sent to the browser). The model defaults to `gemini-3-pro-preview`;
 set `GEMINI_MODEL` to override.
+
+### Email (Spacemail)
+
+Outgoing mail uses [Spacemail's SMTP](https://www.spaceship.com/knowledgebase/connect-spacemail-to-email-client/):
+host `mail.spacemail.com`, port `465` (SSL) — port `587` (STARTTLS) also works
+on restricted networks. Set `SMTP_USER` to the full mailbox address
+(hello@westringia.com) and `SMTP_PASS` to its password. Every send BCCs the
+mailbox itself, since SMTP sends don't land in the Sent folder.
+
+Two things to keep in mind for cold outreach from your primary domain:
+keep volume low (a handful a day) to protect the mailbox's reputation, and
+leave the identification + opt-out lines in the drafts — commercial email in
+Australia falls under the Spam Act.
 
 ### Run
 

@@ -71,6 +71,20 @@ export interface Proposition {
   model: string
 }
 
+export interface OutreachEmail {
+  to: string
+  subject: string
+  body: string
+  sentAt: string
+  sentBy: string
+  messageId: string
+}
+
+export interface EmailDraft {
+  subject: string
+  body: string
+}
+
 export interface Lead {
   id: string
   url: string
@@ -83,4 +97,5 @@ export interface Lead {
   updatedAt: string
   extraction?: SiteExtraction
   proposition?: Proposition
+  emails?: OutreachEmail[]
 }

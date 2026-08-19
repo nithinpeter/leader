@@ -72,7 +72,9 @@ export async function createLead(input: {
 
 export async function updateLead(
   id: string,
-  patch: Partial<Pick<Lead, 'status' | 'notes' | 'companyName' | 'extraction' | 'proposition'>>,
+  patch: Partial<
+    Pick<Lead, 'status' | 'notes' | 'companyName' | 'extraction' | 'proposition' | 'emails'>
+  >,
 ): Promise<void> {
   await updateDoc(doc(firestore(), COLLECTION, id), {
     ...patch,

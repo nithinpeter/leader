@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AppShell, Protected } from '../components/AppShell'
+import { OutreachPanel } from '../components/OutreachPanel'
 import { StatusBadge } from '../components/StatusBadge'
 import { deleteLead, subscribeToLead, updateLead } from '../lib/leads'
 import { LEAD_STATUSES, STATUS_LABELS, type Lead, type LeadStatus } from '../lib/types'
@@ -53,6 +54,8 @@ function LeadDetail() {
   }
 
   const p = lead.proposition
+  let sectionNo = 0
+  const nextN = () => String(++sectionNo).padStart(2, '0')
 
   async function regenerate() {
     if (!lead?.extraction) return
@@ -152,14 +155,14 @@ function LeadDetail() {
 
       {p ? (
         <>
-          <Section n="01" title="The business">
+          <Section n={nextN()} title="The business">
             <p>{p.companySummary}</p>
             <p className="mt-2 text-sm text-rule-control">{p.industry}</p>
           </Section>
-          <Section n="02" title="Westringia's angle">
+          <Section n={nextN()} title="Westringia's angle">
             <p>{p.uniqueProposition}</p>
           </Section>
-          <Section n="03" title="Two automations worth building">
+          <Section n={nextN()} title="Two automations worth building">
             <div className="grid gap-5 sm:grid-cols-2">
               {p.useCases.map((uc, i) => (
                 <div key={i} className="border border-rule bg-paper-card p-5">
@@ -175,7 +178,7 @@ function LeadDetail() {
               ))}
             </div>
           </Section>
-          <Section n="04" title="Opening line">
+          <Section n={nextN()} title="Opening line">
             <p className="border-l-2 border-sage pl-4 font-display text-lg italic">
               “{p.openingLine}”
             </p>
@@ -196,8 +199,12 @@ function LeadDetail() {
         </p>
       )}
 
+      <Section n={nextN()} title="Outreach">
+        <OutreachPanel lead={lead} />
+      </Section>
+
       {lead.extraction ? (
-        <Section n={p ? '05' : '01'} title="What the site says">
+        <Section n={nextN()} title="What the site says">
           <div className="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
             <Fact label="Title" value={lead.extraction.title} />
             <Fact label="Description" value={lead.extraction.description} />
@@ -226,7 +233,7 @@ function LeadDetail() {
         </Section>
       ) : null}
 
-      <Section n={lead.extraction ? (p ? '06' : '02') : p ? '05' : '01'} title="Notes">
+      <Section n={nextN()} title="Notes">
         <textarea
           value={notes}
           onChange={(e) => {
