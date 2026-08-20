@@ -35,6 +35,16 @@ function sendingEnabled(): boolean {
 }
 
 /**
+ * How many first-contact emails one run may send. Unset falls back to the
+ * cycle's own default; 0 turns first contact off and leaves the cron on
+ * replies and follow-ups only.
+ */
+function coldPerRun(): number | undefined {
+  const n = Number(process.env.COLD_EMAILS_PER_RUN)
+  return Number.isFinite(n) && n >= 0 ? n : undefined
+}
+
+/**
  * Runs one pass of the outreach cycle. Triggered by Cloud Scheduler every 30
  * minutes over HTTP with an OIDC token; the shared secret is a second lock in
  * case the URL ever leaks.
@@ -63,6 +73,7 @@ http('runOutreach', async (req, res) => {
       send,
       // Every automated email tells a person what just went out in their name.
       notify: dryRun ? async () => {} : notifyOfSend,
+      maxColdPerRun: coldPerRun(),
     })
     if (!dryRun) await notifyOfRun(report)
 

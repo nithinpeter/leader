@@ -67,9 +67,20 @@ instant reply.
 ## The automation
 
 A Cloud Function runs the whole loop every 30 minutes: read the mailbox, record
-what came back, answer anyone who wrote to us, and move the follow-up sequence
-along for anyone who has gone quiet. Every automated send emails you a copy
-immediately, with the full text and why it went.
+what came back, answer anyone who wrote to us, make first contact with any lead
+never emailed, and move the follow-up sequence along for anyone who has gone
+quiet. Every automated send emails you a copy immediately, with the full text
+and why it went.
+
+**First contact** is what makes a lead finder useful: drop a lead in with
+nothing but a URL and the next run researches the site, generates the docs and
+the cold email, sends it, and moves the lead to *contacted*. It only touches
+leads still at *new*, *researched* or *doc_ready*; a status beyond that means a
+person moved the lead along by hand, so the cold email is theirs to send. It
+sends at most `COLD_EMAILS_PER_RUN` first emails per run (default 3, set it to
+0 to turn first contact off), because a burst of cold email is how a mailbox
+loses its reputation. Without a Gemini key the template draft is never sent;
+the lead stops at *doc_ready* for a person to handle.
 
 The four follow-ups each have their own job, because a model given "write a
 follow-up" four times writes the same email four times:
