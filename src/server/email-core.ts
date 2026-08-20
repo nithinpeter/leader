@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { renderOutreachHtml, textFooter } from './email-template'
 
 // Spacemail (spaceship.com) SMTP. Username is the full mailbox address.
 const SMTP_DEFAULTS = { host: 'mail.spacemail.com', port: 465 }
@@ -25,11 +26,18 @@ export interface SendInput {
   inReplyTo?: string | null
   /** Skip the BCC copy, used for notifications to ourselves. */
   noCopy?: boolean
+  /**
+   * Send the body as-is, with no branded footer and no HTML part. For
+   * notifications to ourselves; anything going to a prospect leaves this off.
+   */
+  plain?: boolean
 }
 
 /**
- * Sends one plain text email from the outreach mailbox. Shared by the app and
- * by the automation, which runs outside any request.
+ * Sends one email from the outreach mailbox. Shared by the app and by the
+ * automation, which runs outside any request. Outreach goes out as
+ * text + HTML: the drafted body, with the branded footer (identity, contact
+ * details, badge, opt-out) appended here so no draft ever carries it twice.
  */
 export async function performSend(
   input: SendInput,
@@ -53,13 +61,20 @@ export async function performSend(
     ? { inReplyTo: input.inReplyTo, references: [input.inReplyTo] }
     : {}
 
+  const content = input.plain
+    ? { text: input.body }
+    : {
+        text: `${input.body.trimEnd()}\n\n\n${textFooter()}`,
+        html: renderOutreachHtml(input.body),
+      }
+
   const info = await transporter.sendMail({
     from: { name: config.fromName, address: config.auth.user },
     to: input.to,
     // Spacemail's SMTP does not copy to the Sent folder; keep a copy in the inbox.
     ...(input.noCopy ? {} : { bcc: config.auth.user }),
     subject: input.subject,
-    text: input.body,
+    ...content,
     ...threading,
   })
 

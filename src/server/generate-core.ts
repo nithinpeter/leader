@@ -26,16 +26,55 @@ const PitchSchema = z.object({
 })
 
 /**
- * The body comes back as paragraphs rather than one string. Asked for a blank
- * line between them the model returns a single block, and a wall of text is
- * the fastest way to have a cold email deleted.
+ * The body comes back in named parts rather than one string, so the shape of
+ * the email (greeting, opener, the two ideas as a numbered list, closer) is
+ * guaranteed by assembly instead of hoped for from the model. A wall of text
+ * is the fastest way to have a cold email deleted.
  */
-const EmailSchema = z.object({
+export const ColdEmailPartsSchema = z.object({
+  greeting: z.string(),
+  opener: z.string(),
+  ideaOne: z.string(),
+  ideaTwo: z.string(),
+  closer: z.string(),
+})
+export type ColdEmailParts = z.infer<typeof ColdEmailPartsSchema>
+
+const EmailSchema = ColdEmailPartsSchema.extend({
   subject: z.string(),
-  bodyParagraphs: z.array(z.string()),
   followUpSubject: z.string(),
   followUp: z.string(),
 })
+
+/**
+ * The one place the cold email is put together. Ends at "Thanks," with no name
+ * under it; the branded footer goes on at send time (server/email-template.ts).
+ */
+export function assembleColdEmail(parts: ColdEmailParts): string {
+  // Models sometimes number the items anyway. The list numbers itself here.
+  const item = (s: string) => s.trim().replace(/^\d+[.)]\s*/, '')
+  return [
+    parts.greeting.trim(),
+    parts.opener.trim(),
+    `1. ${item(parts.ideaOne)}\n2. ${item(parts.ideaTwo)}`,
+    parts.closer.trim(),
+    'Thanks,',
+  ].join('\n\n')
+}
+
+/** Mailboxes that are a desk, not a person. Never greet these by name. */
+const ROLE_MAILBOXES =
+  /^(info|hello|hi|admin|office|contact|sales|enquir|inquir|accounts|support|team|mail|reception|bookings|jobs|service|help|no-?reply)/i
+
+/**
+ * "sam@..." is probably Sam; "info@..." is nobody. Used by the template
+ * fallback; the AI path reads names out of the site text itself.
+ */
+export function firstNameFromEmail(email: string | undefined): string | null {
+  const local = email?.split('@')[0] ?? ''
+  if (!/^[a-z]{2,12}$/i.test(local) || ROLE_MAILBOXES.test(local)) return null
+  return local.charAt(0).toUpperCase() + local.slice(1).toLowerCase()
+}
 
 const PropositionSchema = z.object({
   companySummary: z.string(),
@@ -106,14 +145,15 @@ FOR THE PITCH DOCUMENT, which is about working with Westringia:
 - pitch.nextStep: 1 to 2 sentences on the smallest sensible next step. Low commitment and clearly described.
 
 FOR THE COLD EMAIL:
-This is the first contact. It has never been sent before, the reader owes us nothing, and it must not read like it was written by a machine or sent to a hundred businesses.
+This is the first contact. It has never been sent before, the reader owes us nothing, and it must not read like it was written by a machine or sent to a hundred businesses. It reads like a short, friendly note from one busy person to another: casual and warm, contractions and all ("we'd", "there's", "you're"), while keeping every voice rule above. Short beats clever.
+
+The email is assembled from the parts below, in this order: greeting, opener, the two use cases as a numbered list, closer, then "Thanks," on its own line. A branded footer with our logo and contact details goes on underneath at send time, so never sign a name and never write contact details into the body. No links, no attachments, no images.
 - openingLine: one sentence a Westringia person could open a cold email with. Specific to this business. No flattery.
 - email.subject: 4 to 7 words. Lowercase except proper nouns. Reads like a colleague wrote it, not marketing. Name the piece of their work it is about, never the technology, so do not use the words AI, automation, software or tool in the subject. No company name stuffing, no "quick question" cliche, no numbers or symbols, no words like free, offer, guaranteed or opportunity.
-- email.bodyParagraphs: EXACTLY FOUR paragraphs, in this order. No links, no attachments, no images. Each paragraph is one or two sentences and about 25 words. The whole thing must land between 90 and 130 words, so cut anything that is not carrying weight. Do not write a greeting and do not write a sign-off, both are added afterwards.
-  1. One specific, true observation about how their business runs, taken from the research. It must be something only a person who actually looked would say. State it as a fact about their business, not as a fact about their website. Write "You match jobs to local branches by postcode", never "Your website shows that you match jobs". No preamble before it.
-  2. The idea itself. One of the two use cases, in plain words, described in terms of their day rather than the technology. Say what stops happening, not what gets deployed.
-  3. Who Westringia is, in one sentence. No credentials, no client list, no adjectives.
-  4. A low friction question. Ask whether it is worth sending over the two page write-up, or whether they have this handled already. Do not ask for a meeting, do not propose a time, do not include a booking link.
+- email.greeting: "Hey <first name>," when the research clearly names the person you are writing to: an owner or manager named in the site text, or a first name plainly readable in a contact email address (sam@... is Sam, info@... is nobody). First name only, never a surname or a title. When no name is certain, exactly "Hi there," and never a name guessed from the company name.
+- email.opener: one or two casual sentences, under 35 words. A specific, true observation about how their business runs, taken from the research. It must be something only a person who actually looked would say, stated as a fact about their business, not about their website. Write "You match jobs to local branches by postcode", never "Your website shows that you match jobs". End it by leading into the list in your own words, along the lines of "A couple of things we reckon we could take off your plate:".
+- email.ideaOne and email.ideaTwo: the two use cases, one sentence each, under 20 words. Plain words, described in terms of their day rather than the technology. Say what stops happening, not what gets deployed. No leading numbers, the list numbers itself on assembly.
+- email.closer: one or two sentences, under 30 words. Who Westringia is in half a sentence, no credentials, no client list, no adjectives. Then the low friction question: worth sending over the two page write-up, or have they got this handled already? Do not ask for a meeting, do not propose a time.
 - email.followUpSubject: a reply-style subject for a follow-up sent about a week later.
 - email.followUp: 40 to 60 words. Open with the new thought itself, in the first sentence, as though continuing a train of thought rather than chasing a reply. It must add something real, either a second observation about their business or a narrowing of the idea to the part most likely to matter. Do not reference the earlier email at all. Never write "just bumping this", "circling back", "following up", or "checking in". End by making it easy to say no, and mean it.
 
@@ -239,9 +279,22 @@ function templateProposition(e: SiteExtraction): Proposition {
     },
     email: {
       subject: 'a thought about your quoting',
-      body: `I had a look at ${e.domain} this morning. It looks like most enquiries come in by ${
-        byPhone ? 'phone' : 'the form on your site'
-      }, which means someone has to stop what they are doing every time one lands.\n\nThe thing we would look at first is the paperwork behind each job. The same details get typed into two systems, and that is usually a few hours a week that nobody notices.\n\nI run a small team in Sydney called Westringia. We build this sort of thing into Australian businesses your size.\n\nI wrote up two specific ideas for ${name}, about two pages. Worth sending over, or is this already handled?\n\nThanks,`,
+      body: assembleColdEmail({
+        greeting: (() => {
+          const first = firstNameFromEmail(e.emails[0])
+          return first ? `Hey ${first},` : 'Hi there,'
+        })(),
+        opener: `Had a look at ${e.domain} this morning. Looks like ${
+          byPhone
+            ? 'most enquiries come in by phone'
+            : 'enquiries come in through the form on your site'
+        }, so someone's stopping what they're doing every time one lands. A couple of things we reckon we could take off your plate:`,
+        ideaOne:
+          'The first reply to every enquiry drafted for you, and one of your people just approves it.',
+        ideaTwo:
+          'The paperwork behind each job written once, instead of typed into two systems.',
+        closer: `We're a small Sydney team called Westringia Labs and we build this sort of thing for businesses your size. I've written both ideas up for ${name}, about two pages. Worth sending over, or is this already handled?`,
+      }),
       followUpSubject: 're: a thought about your quoting',
       followUp: `One more thought since I wrote. If the quoting side is already sorted, the other place this usually pays off is the follow-up on quotes that go quiet. Happy to leave it there if the timing is wrong. Just say and I will not chase.`,
     },
@@ -274,15 +327,14 @@ export async function performGeneration(
   if (!output) {
     throw new Error('The model returned an unparseable proposition. Try again.')
   }
-  const { bodyParagraphs, ...email } = output.email
+  const { greeting, opener, ideaOne, ideaTwo, closer, ...email } = output.email
   return clean({
     ...output,
     useCases: output.useCases.slice(0, 2),
     pitch: { ...output.pitch, questions: output.pitch.questions.slice(0, 4) },
     email: {
       ...email,
-      // The sender adds their own name under the sign-off.
-      body: [...bodyParagraphs.slice(0, 4), 'Thanks,'].join('\n\n'),
+      body: assembleColdEmail({ greeting, opener, ideaOne, ideaTwo, closer }),
     },
     generatedAt: new Date().toISOString(),
     model,

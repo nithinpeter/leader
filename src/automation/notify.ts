@@ -44,8 +44,9 @@ export async function notifyOfSend(
       '',
       email.body,
     ].join('\n'),
-    // No BCC: this is already going to our own mailbox.
+    // No BCC: this is already going to our own mailbox. No footer either.
     noCopy: true,
+    plain: true,
   })
 }
 
@@ -72,5 +73,6 @@ export async function notifyOfRun(report: CycleReport): Promise<void> {
       ...(report.errors.length ? ['', 'Errors:', ...report.errors] : []),
     ].join('\n'),
     noCopy: true,
+    plain: true,
   })
 }

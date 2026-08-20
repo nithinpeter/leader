@@ -6,22 +6,6 @@ import { draftEmail, emailConfigured, sendLeadEmail } from '../server/email'
 import { SendIcon, SparklesIcon } from './icons'
 import { Alert, Button, Input, Spinner, Textarea } from './ui'
 
-/**
- * The generated draft stops at "Thanks," so the sender can add their own name.
- * Anything actually sent from here also needs the sender identified and a way
- * to opt out, which the Spam Act asks of a commercial electronic message.
- */
-function signOff(body: string, senderName?: string | null): string {
-  return [
-    body,
-    senderName || 'The team',
-    'Westringia Labs, Sydney',
-    '02 8531 8610 · westringia.com',
-    '',
-    "If you'd rather not hear from us, just reply and say so. That's the last you'll get.",
-  ].join('\n')
-}
-
 export function OutreachPanel({ lead }: { lead: Lead }) {
   const { user } = useAuth()
   const [fromAddress, setFromAddress] = useState<string | null>(null)
@@ -43,14 +27,16 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
   }, [])
 
   // Start from the draft written with the proposition rather than an empty box.
-  // Draft with AI below re-rolls just the email if this one is not right.
+  // Draft with AI below re-rolls just the email if this one is not right. The
+  // draft ends at "Thanks," with no name: the branded footer, which identifies
+  // us and carries the opt-out the Spam Act requires, goes on at send time.
   useEffect(() => {
     const draft = lead.proposition?.email
     if (!draft || subject || body || lead.doNotContact) return
     setSubject(draft.subject)
-    setBody(signOff(draft.body, user?.displayName))
+    setBody(draft.body)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lead.proposition?.email, user?.displayName])
+  }, [lead.proposition?.email])
 
   async function draft() {
     if (!lead.extraction || !lead.proposition) return
@@ -61,7 +47,6 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
         data: {
           extraction: lead.extraction,
           proposition: lead.proposition,
-          senderName: user?.displayName ?? '',
         },
       })
       setSubject(d.subject)
@@ -251,6 +236,11 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
           placeholder="The email. Draft it with AI, then make it yours before sending."
           className="leading-relaxed"
         />
+        <p className="text-xs text-muted-foreground">
+          Ends at "Thanks," with no name. The branded footer, with the logo,
+          contact details, the OpenAI Select Partner badge and the opt-out
+          line, goes on automatically when it sends.
+        </p>
         <div className="flex flex-wrap items-center gap-4">
           <Button
             onClick={() => void send()}

@@ -52,7 +52,7 @@ BANNED, without exception:
 - Invented commercial terms. No refunds, guarantees, free work, discounts, trials, deadlines or dollar figures. Nothing beyond the method above is agreed. If money comes up, the two weeks are priced on their own and the build is quoted at a fixed price before it starts.
 - Invented facts. No client names, case studies, statistics or claims about their business that are not in the research below.
 - Sentences that would read the same about a different company.
-- Exclamation marks, and any sign-off after "Thanks,". The sender's name is added afterwards.`
+- Exclamation marks, and any sign-off after "Thanks,". No name goes under it. A branded footer with our contact details is added at send time.`
 
 function leadBrief(lead: Lead): string {
   const p = lead.proposition

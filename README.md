@@ -134,7 +134,7 @@ gcloud functions deploy leader-outreach \
   --source=functions --entry-point=runOutreach \
   --trigger-http --no-allow-unauthenticated \
   --service-account="$SA" --timeout=900s --memory=512Mi \
-  --set-env-vars=SMTP_USER=hello@westringia.com,SENDER_NAME='Your Name',NOTIFY_EMAIL=you@westringia.com,APP_URL=https://your-app-url,GEMINI_MODEL=gemini-3.1-pro-preview,AUTOMATION_ENABLED=false \
+  --set-env-vars=SMTP_USER=hello@westringia.com,NOTIFY_EMAIL=you@westringia.com,APP_URL=https://your-app-url,GEMINI_MODEL=gemini-3.1-pro-preview,AUTOMATION_ENABLED=false \
   --set-secrets=SMTP_PASS=leader-smtp-pass:latest,GOOGLE_GENERATIVE_AI_API_KEY=leader-gemini-key:latest,CRON_SECRET=leader-cron-secret:latest
 ```
 
