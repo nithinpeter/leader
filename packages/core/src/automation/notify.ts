@@ -24,9 +24,11 @@ export async function notifyOfSend(
   if (!to) return
 
   const what =
-    action.kind === 'reply'
-      ? `Replied to ${action.company}`
-      : `${action.detail} to ${action.company}`
+    action.kind === 'cold'
+      ? `First email to ${action.company}`
+      : action.kind === 'reply'
+        ? `Replied to ${action.company}`
+        : `${action.detail} to ${action.company}`
 
   await performSend({
     to,
@@ -54,17 +56,19 @@ export async function notifyOfSend(
 export async function notifyOfRun(report: CycleReport): Promise<void> {
   const to = notifyAddress()
   if (!to) return
-  const acted = report.repliesSent + report.followUpsSent + report.stopped
+  const acted =
+    report.coldSent + report.repliesSent + report.followUpsSent + report.stopped
   if (acted === 0 && report.errors.length === 0) return
 
   await performSend({
     to,
-    subject: `[Leader] ${report.repliesSent} replied, ${report.followUpsSent} followed up`,
+    subject: `[Leader] ${report.coldSent} contacted, ${report.repliesSent} replied, ${report.followUpsSent} followed up`,
     body: [
       `Run at ${report.ranAt}.`,
       '',
       `Leads considered: ${report.leadsConsidered}`,
       `New messages recorded: ${report.inboundRecorded}`,
+      `First emails sent: ${report.coldSent}`,
       `Replies sent: ${report.repliesSent}`,
       `Follow-ups sent: ${report.followUpsSent}`,
       `Stopped (bounced or asked us to stop): ${report.stopped}`,

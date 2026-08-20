@@ -2,7 +2,7 @@
   "name": "leader-outreach-cron",
   "private": true,
   "version": "0.1.0",
-  "description": "Cloud Function that checks the outreach mailbox, answers replies and moves the follow-up sequence along.",
+  "description": "Cloud Function that checks the outreach mailbox, answers replies, makes first contact with new leads and moves the follow-up sequence along.",
   "type": "module",
   "main": "dist/index.js",
   "engines": {

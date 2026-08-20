@@ -89,9 +89,20 @@ instant reply.
 ## The automation
 
 A Cloud Function runs the whole loop every 30 minutes: read the mailbox, record
-what came back, answer anyone who wrote to us, and move the follow-up sequence
-along for anyone who has gone quiet. Every automated send emails you a copy
-immediately, with the full text and why it went.
+what came back, answer anyone who wrote to us, make first contact with any lead
+never emailed, and move the follow-up sequence along for anyone who has gone
+quiet. Every automated send emails you a copy immediately, with the full text
+and why it went.
+
+**First contact** is what makes a lead finder useful: drop a lead in with
+nothing but a URL and the next run researches the site, generates the docs and
+the cold email, sends it, and moves the lead to *contacted*. It only touches
+leads still at *new*, *researched* or *doc_ready*; a status beyond that means a
+person moved the lead along by hand, so the cold email is theirs to send. It
+sends at most `COLD_EMAILS_PER_RUN` first emails per run (default 3, set it to
+0 to turn first contact off), because a burst of cold email is how a mailbox
+loses its reputation. Without a Gemini key the template draft is never sent;
+the lead stops at *doc_ready* for a person to handle.
 
 The four follow-ups each have their own job, because a model given "write a
 follow-up" four times writes the same email four times:
@@ -187,6 +198,39 @@ gcloud functions deploy leader-outreach --gen2 --region=australia-southeast1 \
 No `GOOGLE_GENERATIVE_AI_API_KEY`? The flow still works end to end with a
 clearly-marked template draft, so you can set up Firebase first and add the
 key later.
+
+### Redeploys from GitHub Actions
+
+After the first manual deploys, pushes to `main` that touch the bundled code
+(`functions/`, `packages/core/`) redeploy the functions automatically
+(`.github/workflows/deploy-function.yml`; it can also be run by hand from the
+Actions tab). It covers all three entry points — `leader-outreach`,
+`leader-import-lead` and `leader-bulk-import` — but only ones that already
+exist: a function that has never been deployed is skipped rather than created
+half-configured, so the first deploy of each stays manual. The workflow passes
+no env vars or secrets, so a redeploy keeps whatever the function already
+has — it can't flip `AUTOMATION_ENABLED` or detach a secret.
+
+One-time setup — a deployer service account that can deploy the function and
+act as `leader-cron`:
+
+```bash
+PROJECT=$(gcloud config get-value project)
+DEPLOYER=leader-deployer@$PROJECT.iam.gserviceaccount.com
+gcloud iam service-accounts create leader-deployer --display-name="GitHub Actions deployer"
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="serviceAccount:$DEPLOYER" --role=roles/cloudfunctions.developer
+gcloud iam service-accounts add-iam-policy-binding "leader-cron@$PROJECT.iam.gserviceaccount.com" \
+  --member="serviceAccount:$DEPLOYER" --role=roles/iam.serviceAccountUser
+gcloud iam service-accounts keys create leader-deployer-key.json --iam-account="$DEPLOYER"
+```
+
+Then in the GitHub repo under **Settings → Secrets and variables → Actions**
+add two secrets: `GCP_PROJECT_ID` (the project id) and `GCP_SA_KEY` (the full
+contents of `leader-deployer-key.json`) — and delete the local key file. If
+you'd rather not keep a long-lived key at all, swap the `auth` step for
+[Workload Identity Federation](https://github.com/google-github-actions/auth#preferred-direct-workload-identity-federation);
+the rest of the workflow stays the same.
 
 ## Bulk import
 
