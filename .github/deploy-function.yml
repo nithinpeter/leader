@@ -1,0 +1,83 @@
+# NOTE: GitHub blocks Claude's app token from creating files under
+# .github/workflows/, so this lives one level up. Activate it with:
+#   git mv .github/deploy-function.yml .github/workflows/deploy-function.yml
+#
+# Deploys the leader-outreach Cloud Function on pushes to main that touch the
+# code the bundle is built from, or on demand from the Actions tab.
+#
+# Env vars and secrets are deliberately NOT passed to `gcloud functions deploy`:
+# a deploy that omits --set-env-vars / --set-secrets keeps whatever the function
+# already has, so a CI redeploy can never flip AUTOMATION_ENABLED back to false
+# or detach a secret. The first deploy (which sets all of that up) stays the
+# manual one documented in README.md.
+#
+# Required repository secrets:
+#   GCP_PROJECT_ID  the Google Cloud project id
+#   GCP_SA_KEY      JSON key for a deployer service account (see README.md)
+
+name: Deploy Cloud Function
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # functions/src/index.ts bundles code out of these directories
+      - functions/**
+      - src/automation/**
+      - src/server/**
+      - src/lib/**
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/deploy-function.yml
+  workflow_dispatch:
+
+# One deploy at a time; a queued push waits rather than racing the current one.
+concurrency:
+  group: deploy-leader-outreach
+  cancel-in-progress: false
+
+env:
+  FUNCTION_NAME: leader-outreach
+  REGION: australia-southeast1
+  RUNTIME: nodejs22
+  ENTRY_POINT: runOutreach
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bundle the function
+        run: pnpm run build:functions
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy
+        run: |
+          gcloud functions deploy "$FUNCTION_NAME" \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --gen2 --runtime="$RUNTIME" --region="$REGION" \
+            --source=functions --entry-point="$ENTRY_POINT" \
+            --trigger-http --no-allow-unauthenticated \
+            --service-account="leader-cron@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --timeout=900s --memory=512Mi \
+            --quiet
