@@ -1,0 +1,27 @@
+{
+  "name": "@leader/core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared domain code for Leader: lead types, site extraction, proposition generation, outreach email and the follow-up automation. Consumed as TypeScript source by the web app (Vite) and the Cloud Functions bundle (esbuild) alike - there is no build step here.",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^4.0.45",
+    "ai": "^7.0.68",
+    "imapflow": "^1.7.1",
+    "mailparser": "^3.9.15",
+    "nodemailer": "^9.0.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^22.10.0",
+    "@types/nodemailer": "^8.0.1",
+    "typescript": "^7.0.2"
+  }
+}

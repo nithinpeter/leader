@@ -13,10 +13,32 @@ reads it, works out what they do, and drafts the three things you send them:
   a checklist to run before sending.
 
 All three are written to be read by the client, not by us. The house rules are
-in the system prompt in `[src/server/generate-core.ts](./src/server/generate-core.ts)`:
+in the system prompt in [packages/core/src/generate-core.ts](./packages/core/src/generate-core.ts):
 plain words, short sentences, humble without underselling, honest about what
 AI cannot do here, conservative with numbers, no invented commercial terms, and
 no em dashes. That last one is also enforced in code, because models slip.
+
+## Repository layout
+
+A pnpm workspace ([pnpm-workspace.yaml](./pnpm-workspace.yaml)):
+
+- **[apps/web](./apps/web)** (`@leader/web`) - the TanStack Start app: routes,
+  components, the Firebase client, and the server-function wrappers.
+- **[packages/core](./packages/core)** (`@leader/core`) - shared domain code:
+  lead types, site extraction, proposition generation, outreach email, the
+  follow-up automation. No build step; it is consumed as TypeScript source by
+  Vite and esbuild alike, via `exports` mapping `@leader/core/*` to `src/*.ts`.
+- **[functions](./functions)** - the Cloud Functions deployable. Deliberately
+  *not* a workspace member: it is its own pnpm root with its own lockfile,
+  because `gcloud functions deploy --source=functions` uploads that directory
+  alone and Cloud Build must install it without the rest of the repo.
+  `pnpm build:functions` bundles `@leader/core` source into `functions/dist`,
+  so only real npm packages are left as runtime dependencies there.
+
+Root scripts delegate (`pnpm dev` / `build` / `start` run the web app, which
+is what Railway builds; `pnpm typecheck` covers all three), so a host that
+runs `pnpm install && pnpm build && pnpm start` at the repo root needs no
+special configuration.
 
 ## Stack
 
@@ -113,7 +135,7 @@ a week before letting it out.
 ### Deploying it
 
 ```bash
-npm run build:functions        # bundles functions/src/index.ts to functions/dist
+pnpm build:functions           # bundles functions/src + packages/core to functions/dist
 ```
 
 Store the secrets once:
@@ -179,12 +201,15 @@ key later.
 
 ### Redeploys from GitHub Actions
 
-After that first manual deploy, pushes to `main` that touch the function's
-code redeploy it automatically
+After the first manual deploys, pushes to `main` that touch the bundled code
+(`functions/`, `packages/core/`) redeploy the functions automatically
 (`.github/workflows/deploy-function.yml`; it can also be run by hand from the
-Actions tab). The workflow passes no env vars or secrets, so a redeploy keeps
-whatever the function already has — it can't flip `AUTOMATION_ENABLED` or
-detach a secret.
+Actions tab). It covers all three entry points — `leader-outreach`,
+`leader-import-lead` and `leader-bulk-import` — but only ones that already
+exist: a function that has never been deployed is skipped rather than created
+half-configured, so the first deploy of each stays manual. The workflow passes
+no env vars or secrets, so a redeploy keeps whatever the function already
+has — it can't flip `AUTOMATION_ENABLED` or detach a secret.
 
 One-time setup — a deployer service account that can deploy the function and
 act as `leader-cron`:
@@ -207,12 +232,103 @@ you'd rather not keep a long-lived key at all, swap the `auth` step for
 [Workload Identity Federation](https://github.com/google-github-actions/auth#preferred-direct-workload-identity-federation);
 the rest of the workflow stays the same.
 
+## Bulk import
+
+**Bulk import** on the dashboard takes a pasted list of websites - one per
+line, commas, or a spreadsheet column - and researches the lot. It skips
+anything already in the pipeline (matched on domain), creates one lead per
+site marked *Queued*, and then each business is extracted and written up
+**in its own function invocation**, so a batch of hundreds runs in parallel
+and one slow or broken site never stalls the rest. Progress lands in the
+pipeline live; failures keep the reason on the lead, with a retry button on
+the lead page.
+
+Two Cloud Functions do the work:
+
+- `bulkImport` takes the batch of lead ids and enqueues one Cloud Tasks task
+  per lead. The queue's dispatch rate is the only throttle, so crawling and
+  Gemini calls are paced there, not in code.
+- `importLead` handles exactly one company: crawl the site, generate the
+  proposition, update the lead. A failure answers 500 so the queue retries
+  with backoff (a timeout or a rate-limited model usually passes on the second
+  go); the extraction is saved as soon as it exists, so a retry skips the
+  crawl. When the retries run out the lead stays marked *Import failed* with
+  the reason.
+
+With nothing deployed, the import page still works: it falls back to running
+the same steps from the browser tab, a few leads at a time, and says so. Fine
+for a dozen leads; deploy the functions for hundreds.
+
+### Deploying it
+
+Reuses the service account and secrets from the outreach cron above, plus a
+Cloud Tasks queue. The queue needs the enqueuer role and permission to mint
+OIDC tokens for the worker:
+
+```bash
+PROJECT=$(gcloud config get-value project)
+SA=leader-cron@$PROJECT.iam.gserviceaccount.com
+REGION=australia-southeast1
+
+gcloud tasks queues create leader-import --location=$REGION \
+  --max-dispatches-per-second=2 --max-concurrent-dispatches=10 \
+  --max-attempts=3 --min-backoff=60s
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="serviceAccount:$SA" --role=roles/cloudtasks.enqueuer
+gcloud iam service-accounts add-iam-policy-binding "$SA" \
+  --member="serviceAccount:$SA" --role=roles/iam.serviceAccountUser
+```
+
+Deploy the worker first, since the dispatcher needs its URL. Same bundle as
+the cron, different entry points:
+
+```bash
+pnpm build:functions
+
+gcloud functions deploy leader-import-lead \
+  --gen2 --runtime=nodejs22 --region=$REGION \
+  --source=functions --entry-point=importLead \
+  --trigger-http --no-allow-unauthenticated \
+  --service-account="$SA" --timeout=540s --memory=512Mi \
+  --set-env-vars=GEMINI_MODEL=gemini-3.1-pro-preview \
+  --set-secrets=GOOGLE_GENERATIVE_AI_API_KEY=leader-gemini-key:latest,CRON_SECRET=leader-cron-secret:latest
+
+WORKER_URL=$(gcloud functions describe leader-import-lead --region=$REGION --gen2 --format='value(serviceConfig.uri)')
+gcloud functions add-invoker-policy-binding leader-import-lead \
+  --region=$REGION --member="serviceAccount:$SA"
+
+gcloud functions deploy leader-bulk-import \
+  --gen2 --runtime=nodejs22 --region=$REGION \
+  --source=functions --entry-point=bulkImport \
+  --trigger-http --allow-unauthenticated \
+  --service-account="$SA" --timeout=540s --memory=256Mi \
+  --set-env-vars=IMPORT_LEAD_URL=$WORKER_URL,TASKS_LOCATION=$REGION,IMPORT_QUEUE=leader-import,TASKS_SA_EMAIL=$SA \
+  --set-secrets=CRON_SECRET=leader-cron-secret:latest
+```
+
+`leader-bulk-import` is reachable from the internet because the app server
+(not a Google identity) calls it; the `x-cron-secret` header is the lock, and
+without it the function answers 403 before touching anything. The worker stays
+`--no-allow-unauthenticated` - only Cloud Tasks calls it, with an OIDC token
+minted for `$SA`.
+
+Finally, tell the app where the dispatcher lives. In the app server's
+environment (Vercel, `.env`, wherever the TanStack server runs):
+
+```bash
+BULK_IMPORT_URL=$(gcloud functions describe leader-bulk-import --region=$REGION --gen2 --format='value(serviceConfig.uri)')
+CRON_SECRET=$(gcloud secrets versions access latest --secret=leader-cron-secret)
+```
+
 ## Setup
 
 ```bash
-npm install
+pnpm install
 cp .env.example .env
 ```
+
+`.env` stays at the repo root - the web app reads it from there (`envDir` in
+[apps/web/vite.config.ts](./apps/web/vite.config.ts)).
 
 ### Firebase
 
@@ -250,9 +366,10 @@ Australia falls under the Spam Act.
 ### Run
 
 ```bash
-npm run dev    # http://localhost:3000
-npm run build  # production build
-npm start      # serve the production build
+pnpm dev        # http://localhost:3000
+pnpm build      # production build of the web app
+pnpm start      # serve the production build
+pnpm typecheck  # web + core + functions
 ```
 
 ## Notes

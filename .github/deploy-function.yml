@@ -2,30 +2,33 @@
 # .github/workflows/, so this lives one level up. Activate it with:
 #   git mv .github/deploy-function.yml .github/workflows/deploy-function.yml
 #
-# Deploys the leader-outreach Cloud Function on pushes to main that touch the
-# code the bundle is built from, or on demand from the Actions tab.
+# Redeploys the Cloud Functions on pushes to main that touch the code the
+# bundle is built from, or on demand from the Actions tab. Three functions
+# share the one bundle (functions/dist), each with its own entry point:
+# leader-outreach (the cron), leader-import-lead and leader-bulk-import
+# (the bulk import fan-out).
 #
 # Env vars and secrets are deliberately NOT passed to `gcloud functions deploy`:
 # a deploy that omits --set-env-vars / --set-secrets keeps whatever the function
 # already has, so a CI redeploy can never flip AUTOMATION_ENABLED back to false
-# or detach a secret. The first deploy (which sets all of that up) stays the
-# manual one documented in README.md.
+# or detach a secret. For the same reason a function that has never been
+# deployed is skipped here rather than created half-configured - the first
+# deploy (which sets all of that up) stays the manual one documented in
+# README.md.
 #
 # Required repository secrets:
 #   GCP_PROJECT_ID  the Google Cloud project id
 #   GCP_SA_KEY      JSON key for a deployer service account (see README.md)
 
-name: Deploy Cloud Function
+name: Deploy Cloud Functions
 
 on:
   push:
     branches: [main]
     paths:
-      # functions/src/index.ts bundles code out of these directories
+      # functions/src/index.ts bundles code out of these places
       - functions/**
-      - src/automation/**
-      - src/server/**
-      - src/lib/**
+      - packages/core/src/**
       - package.json
       - pnpm-lock.yaml
       - .github/workflows/deploy-function.yml
@@ -33,14 +36,12 @@ on:
 
 # One deploy at a time; a queued push waits rather than racing the current one.
 concurrency:
-  group: deploy-leader-outreach
+  group: deploy-leader-functions
   cancel-in-progress: false
 
 env:
-  FUNCTION_NAME: leader-outreach
   REGION: australia-southeast1
   RUNTIME: nodejs22
-  ENTRY_POINT: runOutreach
 
 jobs:
   deploy:
@@ -62,7 +63,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Bundle the function
+      - name: Bundle the functions
         run: pnpm run build:functions
 
       - uses: google-github-actions/auth@v2
@@ -73,11 +74,27 @@ jobs:
 
       - name: Deploy
         run: |
-          gcloud functions deploy "$FUNCTION_NAME" \
-            --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --gen2 --runtime="$RUNTIME" --region="$REGION" \
-            --source=functions --entry-point="$ENTRY_POINT" \
-            --trigger-http --no-allow-unauthenticated \
-            --service-account="leader-cron@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
-            --timeout=900s --memory=512Mi \
-            --quiet
+          # redeploy <name> <entry-point> <timeout> <memory> [extra flags...]
+          # Auth flags are left to the first manual deploy on purpose: a
+          # redeploy that names none keeps the function's existing invoker
+          # policy, and changing it needs IAM rights the deployer lacks.
+          redeploy() {
+            local name="$1" entry="$2" timeout="$3" memory="$4"
+            if ! gcloud functions describe "$name" \
+              --project="${{ secrets.GCP_PROJECT_ID }}" \
+              --gen2 --region="$REGION" >/dev/null 2>&1; then
+              echo "Skipping $name: never deployed (the first deploy is manual, see README.md)"
+              return 0
+            fi
+            gcloud functions deploy "$name" \
+              --project="${{ secrets.GCP_PROJECT_ID }}" \
+              --gen2 --runtime="$RUNTIME" --region="$REGION" \
+              --source=functions --entry-point="$entry" \
+              --trigger-http \
+              --service-account="leader-cron@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+              --timeout="$timeout" --memory="$memory" \
+              --quiet
+          }
+          redeploy leader-outreach    runOutreach 900s 512Mi
+          redeploy leader-import-lead importLead  540s 512Mi
+          redeploy leader-bulk-import bulkImport  540s 256Mi
