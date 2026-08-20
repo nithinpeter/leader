@@ -156,7 +156,12 @@ export async function runCycle(opts: {
       // Nothing else may email this lead, on the cron or by hand.
       if (current.doNotContact) continue
 
-      const to = sentEmails(current)[0]?.to || current.extraction?.emails[0]
+      // A hand-set address wins over where the thread went so far: it exists
+      // precisely because somebody decided the earlier address was wrong.
+      const to =
+        current.contactEmail?.trim() ||
+        sentEmails(current)[0]?.to ||
+        current.extraction?.emails[0]
       if (!to) continue
 
       // 3a. Somebody wrote back. Answering them beats everything else.
