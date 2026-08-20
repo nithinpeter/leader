@@ -1,7 +1,9 @@
 import { performReplyCheck, type SentRef } from '../server/inbox-core'
+import { performExtraction } from '../server/extract-core'
+import { performGeneration } from '../server/generate-core'
 import type { SendInput } from '../server/email-core'
 import { draftFollowUp, draftReply, FOLLOW_UP_ANGLES, MAX_FOLLOW_UPS } from './sequence'
-import type { InboundEmail, Lead, OutreachEmail } from '../lib/types'
+import { leadEmail, type InboundEmail, type Lead, type OutreachEmail } from '../lib/types'
 
 /**
  * Storage the cycle needs. The app reaches Firestore as the signed-in user and
@@ -16,7 +18,7 @@ export interface CycleAction {
   leadId: string
   company: string
   to: string
-  kind: 'reply' | 'follow_up' | 'stopped'
+  kind: 'cold' | 'reply' | 'follow_up' | 'stopped'
   detail: string
 }
 
@@ -24,12 +26,21 @@ export interface CycleReport {
   ranAt: string
   leadsConsidered: number
   inboundRecorded: number
+  coldSent: number
   repliesSent: number
   followUpsSent: number
   stopped: number
   actions: CycleAction[]
   errors: string[]
 }
+
+/**
+ * How many first-contact emails one run may send when nothing else is set.
+ * A lead finder can drop fifty leads in at once; the mailbox's reputation
+ * cannot absorb fifty cold emails in one burst, so the rest wait for the
+ * next half-hourly run.
+ */
+export const DEFAULT_COLD_PER_RUN = 3
 
 function sentEmails(lead: Lead): OutreachEmail[] {
   return (lead.emails ?? []).filter((e) => e.kind !== 'reply')
@@ -58,7 +69,12 @@ function unansweredReplies(lead: Lead): InboundEmail[] {
 
 /**
  * One full pass: read the mailbox, record what came back, answer anyone who
- * wrote to us, and move the sequence along for anyone who has gone quiet.
+ * wrote to us, make first contact with anyone never emailed, and move the
+ * sequence along for anyone who has gone quiet.
+ *
+ * A lead finder can add a lead with nothing but a URL; this pass does whatever
+ * research is still missing (extraction, then generation) before the first
+ * email, writing the same shapes the app writes so the lead page shows it all.
  *
  * Never emails a lead marked doNotContact, never answers anything that is not a
  * person writing back, and sends at most one email per lead per run.
@@ -69,14 +85,18 @@ export async function runCycle(opts: {
   send: (input: SendInput) => Promise<{ messageId: string; from: string }>
   /** Called after every automated send, before the next lead is handled. */
   notify: (action: CycleAction, email: { subject: string; body: string }) => Promise<void>
+  /** Cap on first-contact emails per run. 0 turns first contact off. */
+  maxColdPerRun?: number
   now?: Date
 }): Promise<CycleReport> {
   const { store, send, notify } = opts
+  const maxColdPerRun = opts.maxColdPerRun ?? DEFAULT_COLD_PER_RUN
   const now = opts.now ?? new Date()
   const report: CycleReport = {
     ranAt: now.toISOString(),
     leadsConsidered: 0,
     inboundRecorded: 0,
+    coldSent: 0,
     repliesSent: 0,
     followUpsSent: 0,
     stopped: 0,
@@ -156,6 +176,74 @@ export async function runCycle(opts: {
       // Nothing else may email this lead, on the cron or by hand.
       if (current.doNotContact) continue
 
+      // 3a. Never emailed. Finish the research if the lead finder only left a
+      // URL, then send the first email. Statuses past doc_ready mean a person
+      // moved the lead along by hand, so the cold email is not ours to send.
+      if (!sentEmails(current).length) {
+        if (!['new', 'researched', 'doc_ready'].includes(current.status)) continue
+        if (report.coldSent >= maxColdPerRun) continue
+
+        let extraction = current.extraction
+        if (!extraction) {
+          extraction = await performExtraction(current.url)
+          const patch: Partial<Lead> = { extraction }
+          if (current.status === 'new') patch.status = 'researched'
+          await store.update(current.id, patch)
+          current = { ...current, ...patch }
+        }
+
+        let proposition = current.proposition
+        if (!proposition) {
+          proposition = await performGeneration(extraction)
+          await store.update(current.id, { proposition, status: 'doc_ready' })
+          current = { ...current, proposition, status: 'doc_ready' }
+        }
+
+        // The template draft only exists so the app runs without an API key.
+        // It is generic by design and must never reach a prospect; the lead
+        // stays at doc_ready for a person to email by hand.
+        if (proposition.model === 'template-fallback') continue
+
+        const draft = proposition.email
+        const coldTo = leadEmail(current)
+        if (!draft || !coldTo) continue
+
+        const result = await send({
+          to: coldTo,
+          subject: draft.subject,
+          body: draft.body,
+          inReplyTo: null,
+        })
+        const record: OutreachEmail = {
+          to: coldTo,
+          subject: draft.subject,
+          body: draft.body,
+          sentAt: now.toISOString(),
+          sentBy: 'automation',
+          messageId: result.messageId,
+          // The first touch. Follow-ups count from here.
+          kind: 'cold',
+          auto: true,
+          inReplyTo: null,
+        }
+        await store.update(current.id, {
+          emails: [...(current.emails ?? []), record],
+          status: 'contacted',
+          lastAutomatedAt: now.toISOString(),
+        })
+        report.coldSent++
+        const action: CycleAction = {
+          leadId: current.id,
+          company: current.companyName,
+          to: coldTo,
+          kind: 'cold',
+          detail: 'First email',
+        }
+        report.actions.push(action)
+        await notify(action, { subject: draft.subject, body: draft.body })
+        continue
+      }
+
       // A hand-set address wins over where the thread went so far: it exists
       // precisely because somebody decided the earlier address was wrong.
       const to =
@@ -164,7 +252,7 @@ export async function runCycle(opts: {
         current.extraction?.emails[0]
       if (!to) continue
 
-      // 3a. Somebody wrote back. Answering them beats everything else.
+      // 3b. Somebody wrote back. Answering them beats everything else.
       const waiting = unansweredReplies(current)
       if (waiting.length) {
         const answering = waiting[waiting.length - 1]
@@ -205,11 +293,10 @@ export async function runCycle(opts: {
         continue
       }
 
-      // 3b. Gone quiet. Move the sequence along if it is due.
+      // 3c. Gone quiet. Move the sequence along if it is due.
       const done = followUpsSoFar(current)
       if (done >= MAX_FOLLOW_UPS) continue
       if ((current.replies ?? []).some((r) => r.kind === 'reply')) continue
-      if (!sentEmails(current).length) continue
 
       const waitDays = FOLLOW_UP_ANGLES[done].afterDays
       const dueAt = lastOutboundAt(current) + waitDays * 24 * 60 * 60 * 1000
