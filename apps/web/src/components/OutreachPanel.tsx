@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { updateLead } from '../lib/leads'
-import { INBOUND_LABELS, leadEmail, type Lead, type OutreachEmail } from '../lib/types'
+import { INBOUND_LABELS, leadEmail, type Lead, type OutreachEmail } from '@leader/core/types'
 import { draftEmail, emailConfigured, sendLeadEmail } from '../server/email'
 import { SendIcon, SparklesIcon } from './icons'
 import { Alert, Button, Input, Spinner, Textarea } from './ui'

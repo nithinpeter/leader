@@ -23,7 +23,7 @@ import {
   failQueuedLeads,
   subscribeToLeads,
 } from '../lib/leads'
-import type { Lead } from '../lib/types'
+import type { Lead } from '@leader/core/types'
 import { extractSite } from '../server/extract'
 import { generateProposition } from '../server/generate'
 import { IMPORT_NOT_CONFIGURED, startBulkImport } from '../server/import'

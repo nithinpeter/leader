@@ -1,8 +1,8 @@
 import { generateText, Output } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
-import { DEFAULT_MODEL } from '../server/generate-core'
-import type { InboundEmail, Lead, OutreachEmail } from '../lib/types'
+import { DEFAULT_MODEL } from '../generate-core'
+import type { InboundEmail, Lead, OutreachEmail } from '../types'
 
 const DraftSchema = z.object({ subject: z.string(), body: z.string() })
 export type Draft = z.infer<typeof DraftSchema>

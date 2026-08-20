@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
-import type { SiteExtraction } from '../lib/types'
-import { performExtraction } from './extract-core'
+import type { SiteExtraction } from '@leader/core/types'
+import { performExtraction } from '@leader/core/extract-core'
 
 export interface ExtractInput {
   url: string

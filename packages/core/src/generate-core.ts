@@ -1,7 +1,7 @@
 import { generateText, Output } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
-import type { Proposition, SiteExtraction } from '../lib/types'
+import type { Proposition, SiteExtraction } from './types'
 
 // This is copywriting a client reads, so it wants a pro model. The flash
 // models draft faster and write blander, and they break the voice rules more

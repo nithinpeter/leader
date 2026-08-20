@@ -2,8 +2,8 @@ import { createServerFn } from '@tanstack/react-start'
 import { generateText, Output } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
-import type { EmailDraft, Proposition, SiteExtraction } from '../lib/types'
-import { performSend, sendingMailbox, smtpConfigured } from './email-core'
+import type { EmailDraft, Proposition, SiteExtraction } from '@leader/core/types'
+import { performSend, sendingMailbox, smtpConfigured } from '@leader/core/email-core'
 // One model default for both AI calls. gemini-3-pro-preview, which this used
 // to name, has been retired and now 404s.
 import {
@@ -11,7 +11,7 @@ import {
   ColdEmailPartsSchema,
   DEFAULT_MODEL,
   firstNameFromEmail,
-} from './generate-core'
+} from '@leader/core/generate-core'
 
 export const emailConfigured = createServerFn({ method: 'GET' }).handler(
   async () => ({ configured: smtpConfigured(), from: sendingMailbox() }),

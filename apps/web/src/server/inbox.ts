@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { imapConfigured, performReplyCheck, type SentRef } from './inbox-core'
+import { imapConfigured, performReplyCheck, type SentRef } from '@leader/core/inbox-core'
 
 export const inboxConfigured = createServerFn({ method: 'GET' }).handler(async () => ({
   configured: imapConfigured(),

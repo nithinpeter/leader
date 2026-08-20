@@ -1,4 +1,4 @@
-import { STATUS_LABELS, type LeadStatus } from '../lib/types'
+import { STATUS_LABELS, type LeadStatus } from '@leader/core/types'
 import { Badge, cn } from './ui'
 
 const STATUS_STYLES: Record<LeadStatus, { badge: string; dot: string }> = {

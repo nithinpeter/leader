@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import type { Lead } from '../lib/types'
+import type { Lead } from '@leader/core/types'
 
 /**
  * Shared print chrome for the two client-facing documents. Both are meant to

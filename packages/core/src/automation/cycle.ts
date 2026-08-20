@@ -1,7 +1,7 @@
-import { performReplyCheck, type SentRef } from '../server/inbox-core'
-import type { SendInput } from '../server/email-core'
+import { performReplyCheck, type SentRef } from '../inbox-core'
+import type { SendInput } from '../email-core'
 import { draftFollowUp, draftReply, FOLLOW_UP_ANGLES, MAX_FOLLOW_UPS } from './sequence'
-import type { InboundEmail, Lead, OutreachEmail } from '../lib/types'
+import type { InboundEmail, Lead, OutreachEmail } from '../types'
 
 /**
  * Storage the cycle needs. The app reaches Firestore as the signed-in user and

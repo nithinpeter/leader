@@ -2,12 +2,12 @@ import { http } from '@google-cloud/functions-framework'
 import { CloudTasksClient } from '@google-cloud/tasks'
 import { initializeApp } from 'firebase-admin/app'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
-import { runCycle, type LeadStore } from '../../src/automation/cycle'
-import { notifyOfRun, notifyOfSend } from '../../src/automation/notify'
-import { performSend, type SendInput } from '../../src/server/email-core'
-import { performExtraction } from '../../src/server/extract-core'
-import { performGeneration } from '../../src/server/generate-core'
-import type { Lead } from '../../src/lib/types'
+import { runCycle, type LeadStore } from '../../packages/core/src/automation/cycle'
+import { notifyOfRun, notifyOfSend } from '../../packages/core/src/automation/notify'
+import { performSend, type SendInput } from '../../packages/core/src/email-core'
+import { performExtraction } from '../../packages/core/src/extract-core'
+import { performGeneration } from '../../packages/core/src/generate-core'
+import type { Lead } from '../../packages/core/src/types'
 
 initializeApp()
 const db = getFirestore()

@@ -5,6 +5,9 @@ import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
+  // .env lives at the repo root, shared with the functions tooling, so local
+  // setups keep working from before the monorepo split.
+  envDir: fileURLToPath(new URL('../..', import.meta.url)),
   preview: {
     host: '0.0.0.0',
     port: Number(process.env.PORT) || 4173,

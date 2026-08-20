@@ -17,7 +17,7 @@ import type {
   LeadStatus,
   Proposition,
   SiteExtraction,
-} from './types'
+} from '@leader/core/types'
 
 const COLLECTION = 'leads'
 

@@ -41,7 +41,7 @@ import {
   STATUS_LABELS,
   type Lead,
   type LeadStatus,
-} from '../lib/types'
+} from '@leader/core/types'
 
 export const Route = createFileRoute('/')({
   component: () => (

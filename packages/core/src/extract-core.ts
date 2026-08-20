@@ -1,4 +1,4 @@
-import type { SiteExtraction } from '../lib/types'
+import type { SiteExtraction } from './types'
 
 const FETCH_TIMEOUT_MS = 15_000
 const MAX_SUBPAGES = 3

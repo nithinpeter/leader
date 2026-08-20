@@ -1,3 +1,11 @@
+# The pnpm workspace: the web app and the shared packages. `functions/` is
+# deliberately NOT a member - it is its own pnpm root with its own lockfile,
+# because gcloud uploads that directory alone and Cloud Build must be able to
+# install it without the rest of the repo. Its build bundles @leader/core in.
+packages:
+  - apps/*
+  - packages/*
+
 minimumReleaseAge: 1440
 
 onlyBuiltDependencies:

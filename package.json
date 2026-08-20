@@ -3,36 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "start": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "dev": "pnpm --filter @leader/web dev",
+    "build": "pnpm --filter @leader/web build",
+    "start": "pnpm --filter @leader/web start",
+    "typecheck": "pnpm -r typecheck && tsc -p functions",
     "build:functions": "esbuild functions/src/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=functions/dist/index.js"
   },
-  "dependencies": {
-    "@ai-sdk/google": "^4.0.45",
-    "@tanstack/react-router": "^1.170.31",
-    "@tanstack/react-start": "^1.168.48",
-    "ai": "^7.0.68",
-    "firebase": "^12.17.1",
-    "imapflow": "^1.7.1",
-    "mailparser": "^3.9.15",
-    "nodemailer": "^9.0.5",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "zod": "^4.4.3"
-  },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.3",
-    "@types/mailparser": "^3.4.6",
-    "@types/nodemailer": "^8.0.1",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^5.2.0",
+    "@types/node": "^22.10.0",
     "esbuild": "^0.28.2",
-    "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2",
-    "vite": "^8.2.1"
+    "typescript": "^7.0.2"
   }
 }

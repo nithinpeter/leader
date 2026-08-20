@@ -13,10 +13,32 @@ reads it, works out what they do, and drafts the three things you send them:
   a checklist to run before sending.
 
 All three are written to be read by the client, not by us. The house rules are
-in the system prompt in `[src/server/generate-core.ts](./src/server/generate-core.ts)`:
+in the system prompt in [packages/core/src/generate-core.ts](./packages/core/src/generate-core.ts):
 plain words, short sentences, humble without underselling, honest about what
 AI cannot do here, conservative with numbers, no invented commercial terms, and
 no em dashes. That last one is also enforced in code, because models slip.
+
+## Repository layout
+
+A pnpm workspace ([pnpm-workspace.yaml](./pnpm-workspace.yaml)):
+
+- **[apps/web](./apps/web)** (`@leader/web`) - the TanStack Start app: routes,
+  components, the Firebase client, and the server-function wrappers.
+- **[packages/core](./packages/core)** (`@leader/core`) - shared domain code:
+  lead types, site extraction, proposition generation, outreach email, the
+  follow-up automation. No build step; it is consumed as TypeScript source by
+  Vite and esbuild alike, via `exports` mapping `@leader/core/*` to `src/*.ts`.
+- **[functions](./functions)** - the Cloud Functions deployable. Deliberately
+  *not* a workspace member: it is its own pnpm root with its own lockfile,
+  because `gcloud functions deploy --source=functions` uploads that directory
+  alone and Cloud Build must install it without the rest of the repo.
+  `pnpm build:functions` bundles `@leader/core` source into `functions/dist`,
+  so only real npm packages are left as runtime dependencies there.
+
+Root scripts delegate (`pnpm dev` / `build` / `start` run the web app, which
+is what Railway builds; `pnpm typecheck` covers all three), so a host that
+runs `pnpm install && pnpm build && pnpm start` at the repo root needs no
+special configuration.
 
 ## Stack
 
@@ -102,7 +124,7 @@ a week before letting it out.
 ### Deploying it
 
 ```bash
-npm run build:functions        # bundles functions/src/index.ts to functions/dist
+pnpm build:functions           # bundles functions/src + packages/core to functions/dist
 ```
 
 Store the secrets once:
@@ -217,7 +239,7 @@ Deploy the worker first, since the dispatcher needs its URL. Same bundle as
 the cron, different entry points:
 
 ```bash
-npm run build:functions
+pnpm build:functions
 
 gcloud functions deploy leader-import-lead \
   --gen2 --runtime=nodejs22 --region=$REGION \
@@ -257,9 +279,12 @@ CRON_SECRET=$(gcloud secrets versions access latest --secret=leader-cron-secret)
 ## Setup
 
 ```bash
-npm install
+pnpm install
 cp .env.example .env
 ```
+
+`.env` stays at the repo root - the web app reads it from there (`envDir` in
+[apps/web/vite.config.ts](./apps/web/vite.config.ts)).
 
 ### Firebase
 
@@ -297,9 +322,10 @@ Australia falls under the Spam Act.
 ### Run
 
 ```bash
-npm run dev    # http://localhost:3000
-npm run build  # production build
-npm start      # serve the production build
+pnpm dev        # http://localhost:3000
+pnpm build      # production build of the web app
+pnpm start      # serve the production build
+pnpm typecheck  # web + core + functions
 ```
 
 ## Notes

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Protected } from '../components/AppShell'
 import { DocFrame, DocItem, DocPlaceholder, DocSection } from '../components/DocChrome'
 import { subscribeToLead } from '../lib/leads'
-import type { Lead } from '../lib/types'
+import type { Lead } from '@leader/core/types'
 
 export const Route = createFileRoute('/doc/$leadId')({
   component: () => (

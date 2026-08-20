@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
-import type { SiteExtraction } from '../lib/types'
-import { performGeneration } from './generate-core'
+import type { SiteExtraction } from '@leader/core/types'
+import { performGeneration } from '@leader/core/generate-core'
 
 export const generateProposition = createServerFn({ method: 'POST' })
   .validator((input: { extraction: SiteExtraction }) => {

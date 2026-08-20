@@ -1,4 +1,4 @@
-import { performSend } from '../server/email-core'
+import { performSend } from '../email-core'
 import type { CycleAction, CycleReport } from './cycle'
 
 /** Where the "we just sent this" emails go. Defaults to the outreach mailbox. */

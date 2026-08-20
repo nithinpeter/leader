@@ -1,6 +1,6 @@
 import { ImapFlow, type SearchObject } from 'imapflow'
 import { simpleParser } from 'mailparser'
-import type { InboundEmail, InboundKind } from '../lib/types'
+import type { InboundEmail, InboundKind } from './types'
 
 // Spacemail (spaceship.com) IMAP, same mailbox and credentials as sending.
 const IMAP_DEFAULTS = { host: 'mail.spacemail.com', port: 993 }

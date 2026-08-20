@@ -1,6 +1,6 @@
 import { checkReplies } from '../server/inbox'
 import { updateLead } from './leads'
-import type { InboundEmail, Lead } from './types'
+import type { InboundEmail, Lead } from '@leader/core/types'
 
 export interface ReplySyncResult {
   /** Messages newly recorded against a lead. */

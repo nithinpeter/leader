@@ -43,7 +43,7 @@ import {
   type EmailDraft,
   type Lead,
   type LeadStatus,
-} from '../lib/types'
+} from '@leader/core/types'
 import { extractSite } from '../server/extract'
 import { generateProposition } from '../server/generate'
 

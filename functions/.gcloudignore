@@ -1,6 +1,8 @@
-# Only the bundle and its manifest are deployed. Source lives in the repo root.
+# Only the bundle and its manifest are deployed. Source lives in the repo
+# (functions/src plus packages/core, bundled into dist by build:functions).
 src/
 node_modules/
+tsconfig.json
 .gcloudignore
 
 # The release-age policy is a local resolution guard. Cloud Build enforces its
