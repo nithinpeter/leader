@@ -1,0 +1,14 @@
+# Neither package's build script does anything here: protobufjs's only prints a
+# warning, and @firebase/util ships the prebuilt dist/postinstall.js that its
+# script would write when FIREBASE_WEBAPP_CONFIG is unset (an App Hosting
+# variable Cloud Functions never sets). So both are denied rather than approved.
+#
+# Cloud Build runs pnpm 11, which fails the build on any undeclared build
+# script; pnpm 10 reads the older key. Both are listed so either version is
+# explicit about the same decision.
+allowBuilds:
+  '@firebase/util': false
+  protobufjs: false
+ignoredBuiltDependencies:
+  - '@firebase/util'
+  - protobufjs

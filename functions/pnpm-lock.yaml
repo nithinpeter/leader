@@ -10,13 +10,13 @@ importers:
     dependencies:
       '@ai-sdk/google':
         specifier: ^4.0.45
-        version: 4.0.46(zod@4.4.3)
+        version: 4.0.45(zod@4.4.3)
       '@google-cloud/functions-framework':
         specifier: ^4.0.0
         version: 4.0.1
       ai:
         specifier: ^7.0.68
-        version: 7.0.69(zod@4.4.3)
+        version: 7.0.68(zod@4.4.3)
       firebase-admin:
         specifier: ^13.0.2
         version: 13.10.0
@@ -35,14 +35,14 @@ importers:
 
 packages:
 
-  '@ai-sdk/gateway@4.0.55':
-    resolution: {integrity: sha512-7WP/nlDz2BkXFlZzwF3w5JgCvktyHC++LP4PZ4mQpbvxrq+M7OdNslevlkuddHhJ+62BZu4oiL/afXlsWOSJZQ==}
+  '@ai-sdk/gateway@4.0.54':
+    resolution: {integrity: sha512-x4fAXDqCtYzB/M5vsIQLYcyrzpJuaRgcIwDSw+lpTMMbgH19fU3ds75GSlHNLzfx6Z5yL4Z9+EMr0GJcqVy9QA==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/google@4.0.46':
-    resolution: {integrity: sha512-BkVqB/V7Cq6KgGivxgaH/pt/PyfXN/FtvSONRx0WygKJ0mvw9yl7/3yWy8xlw/JtLh6QTEzhzlyJOOwVGjr6sA==}
+  '@ai-sdk/google@4.0.45':
+    resolution: {integrity: sha512-1oLHhc2twSQzm7O8j/HaRWLfBh+tPjQP55d8yXmrZvvopoH6/P7WaDznVJqjouGSof429lR+tYdINkjvUl+8Qg==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -277,8 +277,8 @@ packages:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
 
-  ai@7.0.69:
-    resolution: {integrity: sha512-gudEqQYt/FuRpQkckLHPYKOh5M5v5ayPmzQAk5xyZOaWkUM0ArNGdXQiBGEuZA7GCwYOjzmWxB44ZW0CyRhHfQ==}
+  ai@7.0.68:
+    resolution: {integrity: sha512-9QuZOT77wzoxxUC0NcueXhCo3HUHA/1pApIJ9VRyE+9/K+3Innkq4kVhrd9aEnwIviJz2Nga063m+UTsPSdOyw==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -1281,14 +1281,14 @@ packages:
 
 snapshots:
 
-  '@ai-sdk/gateway@4.0.55(zod@4.4.3)':
+  '@ai-sdk/gateway@4.0.54(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.7
       '@ai-sdk/provider-utils': 5.0.27(zod@4.4.3)
       '@vercel/oidc': 3.2.0
       zod: 4.4.3
 
-  '@ai-sdk/google@4.0.46(zod@4.4.3)':
+  '@ai-sdk/google@4.0.45(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.7
       '@ai-sdk/provider-utils': 5.0.27(zod@4.4.3)
@@ -1589,9 +1589,9 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  ai@7.0.69(zod@4.4.3):
+  ai@7.0.68(zod@4.4.3):
     dependencies:
-      '@ai-sdk/gateway': 4.0.55(zod@4.4.3)
+      '@ai-sdk/gateway': 4.0.54(zod@4.4.3)
       '@ai-sdk/provider': 4.0.7
       '@ai-sdk/provider-utils': 5.0.27(zod@4.4.3)
       zod: 4.4.3

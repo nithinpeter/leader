@@ -2,3 +2,7 @@
 src/
 node_modules/
 .gcloudignore
+
+# The release-age policy is a local resolution guard. Cloud Build enforces its
+# own; shipping ours could override it with a weaker value.
+.npmrc
