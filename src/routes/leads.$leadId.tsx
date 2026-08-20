@@ -5,6 +5,8 @@ import {
   CopyIcon,
   ExternalLinkIcon,
   FileTextIcon,
+  MailIcon,
+  PencilIcon,
   RefreshIcon,
   TrashIcon,
 } from '../components/icons'
@@ -19,6 +21,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Input,
   Select,
   Separator,
   Spinner,
@@ -30,6 +33,7 @@ import { deleteLead, subscribeToLead, updateLead } from '../lib/leads'
 import {
   LEAD_STATUSES,
   STATUS_LABELS,
+  leadEmail,
   type EmailDraft,
   type Lead,
   type LeadStatus,
@@ -136,34 +140,7 @@ function LeadDetail({
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Avatar name={lead.companyName} className="size-12 text-base" />
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {lead.companyName}
-            </h1>
-            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-              <a
-                href={lead.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
-              >
-                {lead.domain}
-                <ExternalLinkIcon size={12} />
-              </a>
-              <span>·</span>
-              <span>
-                added{' '}
-                {new Date(lead.createdAt).toLocaleDateString('en-AU', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}
-              </span>
-            </p>
-          </div>
-        </div>
+        <LeadIdentity lead={lead} />
         <div className="flex items-center gap-3">
           <StatusBadge status={lead.status} />
           <Select
@@ -286,7 +263,7 @@ function LeadDetail({
             </CardHeader>
             <CardContent>
               {p.email ? (
-                <EmailDraftPanel email={p.email} to={lead.extraction?.emails[0]} />
+                <EmailDraftPanel email={p.email} to={leadEmail(lead)} />
               ) : (
                 <>
                   {p.openingLine ? (
@@ -397,6 +374,151 @@ function LeadDetail({
           </Button>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+/**
+ * The name and address at the top of the page, with a pencil to correct
+ * either. The crawler guesses both, and a wrong guess otherwise follows the
+ * lead through every email it ever gets sent.
+ */
+function LeadIdentity({ lead }: { lead: Lead }) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const currentEmail = leadEmail(lead)
+
+  function beginEdit() {
+    setName(lead.companyName)
+    setEmail(currentEmail ?? '')
+    setError(null)
+    setEditing(true)
+  }
+
+  async function save() {
+    const nextName = name.trim()
+    const nextEmail = email.trim()
+    if (!nextName) {
+      setError('The lead needs a name.')
+      return
+    }
+    if (nextEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+      setError('That does not look like an email address.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateLead(lead.id, {
+        companyName: nextName,
+        // Clearing the box falls back to whatever the crawler found.
+        contactEmail: nextEmail,
+      })
+      setEditing(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-start gap-4">
+        <Avatar name={name || lead.companyName} className="size-12 text-base" />
+        <div className="w-full max-w-sm space-y-2">
+          <Input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Company name"
+            aria-label="Company name"
+            autoFocus
+          />
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={
+              lead.extraction?.emails[0]
+                ? `Contact email (blank uses ${lead.extraction.emails[0]})`
+                : 'Contact email'
+            }
+            aria-label="Contact email"
+          />
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => void save()} disabled={saving}>
+              {saving ? <Spinner className="size-3.5" /> : null}
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditing(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-4">
+      <Avatar name={lead.companyName} className="size-12 text-base" />
+      <div>
+        <div className="flex items-center gap-1.5">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {lead.companyName}
+          </h1>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted-foreground hover:text-foreground"
+            aria-label="Edit name and email"
+            title="Edit name and email"
+            onClick={beginEdit}
+          >
+            <PencilIcon size={14} />
+          </Button>
+        </div>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+          <a
+            href={lead.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
+          >
+            {lead.domain}
+            <ExternalLinkIcon size={12} />
+          </a>
+          {currentEmail ? (
+            <>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1">
+                <MailIcon size={12} />
+                {currentEmail}
+              </span>
+            </>
+          ) : null}
+          <span>·</span>
+          <span>
+            added{' '}
+            {new Date(lead.createdAt).toLocaleDateString('en-AU', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            })}
+          </span>
+        </p>
+      </div>
     </div>
   )
 }

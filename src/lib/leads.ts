@@ -78,6 +78,7 @@ export async function updateLead(
       | 'status'
       | 'notes'
       | 'companyName'
+      | 'contactEmail'
       | 'extraction'
       | 'proposition'
       | 'emails'

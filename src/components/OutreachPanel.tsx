@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { updateLead } from '../lib/leads'
-import { INBOUND_LABELS, type Lead, type OutreachEmail } from '../lib/types'
+import { INBOUND_LABELS, leadEmail, type Lead, type OutreachEmail } from '../lib/types'
 import { draftEmail, emailConfigured, sendLeadEmail } from '../server/email'
 import { SendIcon, SparklesIcon } from './icons'
 import { Alert, Button, Input, Spinner, Textarea } from './ui'
@@ -10,7 +10,8 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
   const { user } = useAuth()
   const [fromAddress, setFromAddress] = useState<string | null>(null)
   const [configured, setConfigured] = useState<boolean | null>(null)
-  const [to, setTo] = useState(lead.extraction?.emails[0] ?? '')
+  const [to, setTo] = useState(leadEmail(lead) ?? '')
+  const [toDirty, setToDirty] = useState(false)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState<'draft' | 'send' | null>(null)
@@ -25,6 +26,13 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
       })
       .catch(() => setConfigured(false))
   }, [])
+
+  // Follow the lead's address when it is corrected up in the header, unless
+  // the person has already typed their own into this box.
+  useEffect(() => {
+    if (!toDirty) setTo(leadEmail(lead) ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.contactEmail, lead.extraction?.emails[0]])
 
   // Start from the draft written with the proposition rather than an empty box.
   // Draft with AI below re-rolls just the email if this one is not right. The
@@ -209,7 +217,10 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
           <Input
             type="email"
             value={to}
-            onChange={(e) => setTo(e.target.value)}
+            onChange={(e) => {
+              setTo(e.target.value)
+              setToDirty(true)
+            }}
             placeholder="who@theirbusiness.com.au"
             className="min-w-64 flex-1"
           />

@@ -190,6 +190,12 @@ export interface Lead {
   emails?: OutreachEmail[]
   replies?: InboundEmail[]
   /**
+   * The address a person set by hand. Wins over whatever the crawler scraped,
+   * because a human typed it on purpose - the scraped list stays untouched as
+   * a record of what the site said.
+   */
+  contactEmail?: string
+  /**
    * They asked us to stop, or the address is dead. Nothing may email this lead
    * again, by hand or on the cron.
    */
@@ -198,4 +204,16 @@ export interface Lead {
   doNotContactReason?: string
   /** Set when the cron last acted on this lead, to keep runs idempotent. */
   lastAutomatedAt?: string
+}
+
+/**
+ * The address outreach should use: the hand-set one if a person corrected it,
+ * otherwise the first address the crawler found. Lives here rather than in
+ * lib/leads.ts because the cron uses it too and must not pull in the browser
+ * Firebase client.
+ */
+export function leadEmail(
+  lead: Pick<Lead, 'contactEmail' | 'extraction'>,
+): string | undefined {
+  return lead.contactEmail?.trim() || lead.extraction?.emails[0] || undefined
 }
