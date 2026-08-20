@@ -16,6 +16,7 @@ import {
   SearchIcon,
   SparklesIcon,
   TrendingUpIcon,
+  UploadIcon,
   UsersIcon,
 } from '../components/icons'
 import {
@@ -34,7 +35,13 @@ import {
 } from '../components/ui'
 import { subscribeToLeads } from '../lib/leads'
 import { needsAttention, syncReplies, type ReplySyncResult } from '../lib/replies'
-import { LEAD_STATUSES, STATUS_LABELS, type Lead, type LeadStatus } from '../lib/types'
+import {
+  IMPORT_LABELS,
+  LEAD_STATUSES,
+  STATUS_LABELS,
+  type Lead,
+  type LeadStatus,
+} from '../lib/types'
 
 export const Route = createFileRoute('/')({
   component: () => (
@@ -114,6 +121,10 @@ function Dashboard() {
               {checking ? 'Reading the mailbox…' : 'Check for replies'}
             </Button>
           ) : null}
+          <Link to="/leads/import" className={buttonClass('outline', 'default')}>
+            <UploadIcon size={16} />
+            Bulk import
+          </Link>
           <Link to="/leads/new" className={buttonClass('default', 'default')}>
             <PlusIcon size={16} />
             Add lead
@@ -436,6 +447,27 @@ function LeadTable({
   )
 }
 
+/** Bulk-import progress, shown only while the machinery still owns the lead. */
+function ImportBadge({ lead }: { lead: Lead }) {
+  if (!lead.importState) return null
+  if (lead.importState === 'failed') {
+    return (
+      <Badge
+        className="border-destructive/25 bg-destructive/10 text-destructive"
+        title={lead.importError}
+      >
+        {IMPORT_LABELS.failed}
+      </Badge>
+    )
+  }
+  return (
+    <Badge className="border-border bg-muted/60 text-foreground/80">
+      {lead.importState === 'running' ? <Spinner className="size-2.5" /> : null}
+      {IMPORT_LABELS[lead.importState]}
+    </Badge>
+  )
+}
+
 /**
  * What came back on this lead, at a glance: bounces and opt-outs first
  * (they need a person to act), then a genuine reply.
@@ -486,6 +518,7 @@ function LeadRow({ lead }: { lead: Lead }) {
       <td className="px-4 py-3">
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusBadge status={lead.status} />
+          <ImportBadge lead={lead} />
           <InboundBadge lead={lead} />
         </div>
       </td>

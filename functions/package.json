@@ -11,6 +11,7 @@
   "dependencies": {
     "@ai-sdk/google": "^4.0.45",
     "@google-cloud/functions-framework": "^4.0.0",
+    "@google-cloud/tasks": "^6.2.0",
     "ai": "^7.0.68",
     "firebase-admin": "^13.0.2",
     "imapflow": "^1.7.1",

@@ -2,14 +2,22 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   onSnapshot,
   orderBy,
   query,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore'
 import { firestore } from './firebase'
-import type { Lead, LeadStatus, Proposition, SiteExtraction } from './types'
+import type {
+  ImportState,
+  Lead,
+  LeadStatus,
+  Proposition,
+  SiteExtraction,
+} from './types'
 
 const COLLECTION = 'leads'
 
@@ -70,6 +78,47 @@ export async function createLead(input: {
   return ref.id
 }
 
+/** Firestore caps a batch at 500 writes; stay comfortably under it. */
+const BATCH_LIMIT = 400
+
+/**
+ * Creates one bare lead per URL, marked `importState: 'queued'`, and returns
+ * the new ids. The docs exist before any extraction runs so the pipeline shows
+ * the whole batch immediately and each worker has somewhere to write progress.
+ */
+export async function createQueuedLeads(
+  entries: Array<{ url: string; domain: string }>,
+  createdBy: string,
+): Promise<string[]> {
+  const now = new Date().toISOString()
+  const ids: string[] = []
+  for (let i = 0; i < entries.length; i += BATCH_LIMIT) {
+    const batch = writeBatch(firestore())
+    for (const entry of entries.slice(i, i + BATCH_LIMIT)) {
+      const ref = doc(leadsCollection())
+      // Placeholder name from the domain; the extraction overwrites it.
+      const companyName = entry.domain
+        .split('.')[0]
+        .replace(/^\w/, (c) => c.toUpperCase())
+      const lead: Omit<Lead, 'id'> = {
+        url: entry.url,
+        domain: entry.domain,
+        companyName,
+        status: 'new',
+        notes: '',
+        createdBy,
+        createdAt: now,
+        updatedAt: now,
+        importState: 'queued',
+      }
+      batch.set(ref, lead)
+      ids.push(ref.id)
+    }
+    await batch.commit()
+  }
+  return ids
+}
+
 export async function updateLead(
   id: string,
   patch: Partial<
@@ -88,6 +137,57 @@ export async function updateLead(
 ): Promise<void> {
   await updateDoc(doc(firestore(), COLLECTION, id), {
     ...patch,
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+/**
+ * Marks a batch of still-queued leads as failed, used when the dispatch to the
+ * import functions itself broke - otherwise they would sit "Queued" forever
+ * with no worker ever coming for them.
+ */
+export async function failQueuedLeads(ids: string[], reason: string): Promise<void> {
+  const now = new Date().toISOString()
+  for (let i = 0; i < ids.length; i += BATCH_LIMIT) {
+    const batch = writeBatch(firestore())
+    for (const id of ids.slice(i, i + BATCH_LIMIT)) {
+      batch.update(doc(firestore(), COLLECTION, id), {
+        importState: 'failed',
+        importError: reason,
+        updatedAt: now,
+      })
+    }
+    await batch.commit()
+  }
+}
+
+/**
+ * One step of an import written back to the lead. `null` for importState or
+ * importError removes the field, which is how a finished import ends up
+ * indistinguishable from a hand-added lead. Used by the in-browser fallback;
+ * the Cloud Function path writes the same shapes with the admin SDK.
+ */
+export async function applyImportResult(
+  id: string,
+  patch: {
+    extraction?: SiteExtraction
+    proposition?: Proposition
+    companyName?: string
+    domain?: string
+    status?: LeadStatus
+    importState?: ImportState | null
+    importError?: string | null
+  },
+): Promise<void> {
+  const { importState, importError, ...rest } = patch
+  await updateDoc(doc(firestore(), COLLECTION, id), {
+    ...rest,
+    ...(importState !== undefined
+      ? { importState: importState ?? deleteField() }
+      : {}),
+    ...(importError !== undefined
+      ? { importError: importError ?? deleteField() }
+      : {}),
     updatedAt: new Date().toISOString(),
   })
 }

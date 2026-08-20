@@ -175,6 +175,19 @@ export interface InboundEmail {
   matchedLoosely: boolean
 }
 
+/**
+ * Where a bulk-imported lead sits in the import machinery. Absent once the
+ * import finishes cleanly, so hand-added leads and completed imports look
+ * identical.
+ */
+export type ImportState = 'queued' | 'running' | 'failed'
+
+export const IMPORT_LABELS: Record<ImportState, string> = {
+  queued: 'Queued',
+  running: 'Importing',
+  failed: 'Import failed',
+}
+
 export interface Lead {
   id: string
   url: string
@@ -204,6 +217,10 @@ export interface Lead {
   doNotContactReason?: string
   /** Set when the cron last acted on this lead, to keep runs idempotent. */
   lastAutomatedAt?: string
+  /** Present only while a bulk import is working on this lead, or when it failed. */
+  importState?: ImportState
+  /** Why the import failed, written for whoever reads the lead later. */
+  importError?: string
 }
 
 /**

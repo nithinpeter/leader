@@ -13,6 +13,7 @@ import {
 import { OutreachPanel } from '../components/OutreachPanel'
 import { StatusBadge } from '../components/StatusBadge'
 import {
+  Alert,
   Avatar,
   Badge,
   Button,
@@ -29,7 +30,12 @@ import {
   buttonClass,
 } from '../components/ui'
 import { useAuth } from '../lib/auth'
-import { deleteLead, subscribeToLead, updateLead } from '../lib/leads'
+import {
+  applyImportResult,
+  deleteLead,
+  subscribeToLead,
+  updateLead,
+} from '../lib/leads'
 import {
   LEAD_STATUSES,
   STATUS_LABELS,
@@ -38,6 +44,7 @@ import {
   type Lead,
   type LeadStatus,
 } from '../lib/types'
+import { extractSite } from '../server/extract'
 import { generateProposition } from '../server/generate'
 
 export const Route = createFileRoute('/leads/$leadId')({
@@ -122,9 +129,52 @@ function LeadDetail({
       const proposition = await generateProposition({
         data: { extraction: lead.extraction },
       })
-      await updateLead(lead.id, { proposition })
+      // Also clears any leftover import failure: a proposition means whatever
+      // broke has been put right.
+      await applyImportResult(lead.id, {
+        proposition,
+        importState: null,
+        importError: null,
+        ...(lead.importState ? { status: 'doc_ready' as const } : {}),
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Generation failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /** Runs the whole import again for a lead the bulk import could not finish. */
+  async function retryImport() {
+    if (!lead) return
+    setBusy('retry')
+    setError(null)
+    try {
+      await applyImportResult(lead.id, { importState: 'running' })
+      const extraction =
+        lead.extraction ?? (await extractSite({ data: { url: lead.url } }))
+      if (!lead.extraction) {
+        await applyImportResult(lead.id, {
+          extraction,
+          companyName: extraction.companyName,
+          domain: extraction.domain,
+          status: 'researched',
+        })
+      }
+      const proposition = await generateProposition({ data: { extraction } })
+      await applyImportResult(lead.id, {
+        proposition,
+        status: 'doc_ready',
+        importState: null,
+        importError: null,
+      })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Import failed'
+      await applyImportResult(lead.id, {
+        importState: 'failed',
+        importError: message,
+      }).catch(() => {})
+      setError(message)
     } finally {
       setBusy(null)
     }
@@ -157,6 +207,22 @@ function LeadDetail({
           </Select>
         </div>
       </div>
+
+      {lead.importState === 'failed' ? (
+        <Alert tone="destructive" title="The bulk import could not finish this lead">
+          <p className="text-xs">{lead.importError ?? 'No reason was recorded.'}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => void retryImport()}
+            disabled={busy === 'retry'}
+          >
+            {busy === 'retry' ? <Spinner className="size-3.5" /> : <RefreshIcon size={14} />}
+            {busy === 'retry' ? 'Importing…' : 'Retry the import'}
+          </Button>
+        </Alert>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         {p ? (

@@ -166,6 +166,94 @@ No `GOOGLE_GENERATIVE_AI_API_KEY`? The flow still works end to end with a
 clearly-marked template draft, so you can set up Firebase first and add the
 key later.
 
+## Bulk import
+
+**Bulk import** on the dashboard takes a pasted list of websites - one per
+line, commas, or a spreadsheet column - and researches the lot. It skips
+anything already in the pipeline (matched on domain), creates one lead per
+site marked *Queued*, and then each business is extracted and written up
+**in its own function invocation**, so a batch of hundreds runs in parallel
+and one slow or broken site never stalls the rest. Progress lands in the
+pipeline live; failures keep the reason on the lead, with a retry button on
+the lead page.
+
+Two Cloud Functions do the work:
+
+- `bulkImport` takes the batch of lead ids and enqueues one Cloud Tasks task
+  per lead. The queue's dispatch rate is the only throttle, so crawling and
+  Gemini calls are paced there, not in code.
+- `importLead` handles exactly one company: crawl the site, generate the
+  proposition, update the lead. A failure answers 500 so the queue retries
+  with backoff (a timeout or a rate-limited model usually passes on the second
+  go); the extraction is saved as soon as it exists, so a retry skips the
+  crawl. When the retries run out the lead stays marked *Import failed* with
+  the reason.
+
+With nothing deployed, the import page still works: it falls back to running
+the same steps from the browser tab, a few leads at a time, and says so. Fine
+for a dozen leads; deploy the functions for hundreds.
+
+### Deploying it
+
+Reuses the service account and secrets from the outreach cron above, plus a
+Cloud Tasks queue. The queue needs the enqueuer role and permission to mint
+OIDC tokens for the worker:
+
+```bash
+PROJECT=$(gcloud config get-value project)
+SA=leader-cron@$PROJECT.iam.gserviceaccount.com
+REGION=australia-southeast1
+
+gcloud tasks queues create leader-import --location=$REGION \
+  --max-dispatches-per-second=2 --max-concurrent-dispatches=10 \
+  --max-attempts=3 --min-backoff=60s
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="serviceAccount:$SA" --role=roles/cloudtasks.enqueuer
+gcloud iam service-accounts add-iam-policy-binding "$SA" \
+  --member="serviceAccount:$SA" --role=roles/iam.serviceAccountUser
+```
+
+Deploy the worker first, since the dispatcher needs its URL. Same bundle as
+the cron, different entry points:
+
+```bash
+npm run build:functions
+
+gcloud functions deploy leader-import-lead \
+  --gen2 --runtime=nodejs22 --region=$REGION \
+  --source=functions --entry-point=importLead \
+  --trigger-http --no-allow-unauthenticated \
+  --service-account="$SA" --timeout=540s --memory=512Mi \
+  --set-env-vars=GEMINI_MODEL=gemini-3.1-pro-preview \
+  --set-secrets=GOOGLE_GENERATIVE_AI_API_KEY=leader-gemini-key:latest,CRON_SECRET=leader-cron-secret:latest
+
+WORKER_URL=$(gcloud functions describe leader-import-lead --region=$REGION --gen2 --format='value(serviceConfig.uri)')
+gcloud functions add-invoker-policy-binding leader-import-lead \
+  --region=$REGION --member="serviceAccount:$SA"
+
+gcloud functions deploy leader-bulk-import \
+  --gen2 --runtime=nodejs22 --region=$REGION \
+  --source=functions --entry-point=bulkImport \
+  --trigger-http --allow-unauthenticated \
+  --service-account="$SA" --timeout=540s --memory=256Mi \
+  --set-env-vars=IMPORT_LEAD_URL=$WORKER_URL,TASKS_LOCATION=$REGION,IMPORT_QUEUE=leader-import,TASKS_SA_EMAIL=$SA \
+  --set-secrets=CRON_SECRET=leader-cron-secret:latest
+```
+
+`leader-bulk-import` is reachable from the internet because the app server
+(not a Google identity) calls it; the `x-cron-secret` header is the lock, and
+without it the function answers 403 before touching anything. The worker stays
+`--no-allow-unauthenticated` - only Cloud Tasks calls it, with an OIDC token
+minted for `$SA`.
+
+Finally, tell the app where the dispatcher lives. In the app server's
+environment (Vercel, `.env`, wherever the TanStack server runs):
+
+```bash
+BULK_IMPORT_URL=$(gcloud functions describe leader-bulk-import --region=$REGION --gen2 --format='value(serviceConfig.uri)')
+CRON_SECRET=$(gcloud secrets versions access latest --secret=leader-cron-secret)
+```
+
 ## Setup
 
 ```bash
