@@ -1,10 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { imapConfigured, performReplyCheck, type SentRef } from '@leader/core/inbox-core'
-
-export const inboxConfigured = createServerFn({ method: 'GET' }).handler(async () => ({
-  configured: imapConfigured(),
-  mailbox: process.env.SMTP_USER ?? null,
-}))
+import { performReplyCheck, type SentRef } from '@leader/core/inbox-core'
 
 export const checkReplies = createServerFn({ method: 'POST' })
   .validator((input: { sent: SentRef[] }) => {

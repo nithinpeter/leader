@@ -121,11 +121,6 @@ export const LogOutIcon = makeIcon(
   </>,
 )
 
-export const ChevronDownIcon = makeIcon(
-  'ChevronDownIcon',
-  <path d="m6 9 6 6 6-6" />,
-)
-
 export const ChevronLeftIcon = makeIcon(
   'ChevronLeftIcon',
   <path d="m15 18-6-6 6-6" />,
@@ -269,9 +264,4 @@ export const CopyIcon = makeIcon(
     <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
     <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
   </>,
-)
-
-export const LoaderIcon = makeIcon(
-  'LoaderIcon',
-  <path d="M21 12a9 9 0 1 1-6.219-8.56" />,
 )

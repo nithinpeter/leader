@@ -5,11 +5,12 @@ import { z } from 'zod'
 import { performSend } from '../../packages/core/src/email-core'
 import { performExtraction } from '../../packages/core/src/extract-core'
 import { performGeneration } from '../../packages/core/src/generate-core'
-import type {
-  ContactRequest,
-  Lead,
-  Proposition,
-  SiteExtraction,
+import {
+  normalizeDomain,
+  type ContactRequest,
+  type Lead,
+  type Proposition,
+  type SiteExtraction,
 } from '../../packages/core/src/types'
 import { db } from './firebase'
 import { guardedFetch, parsePublicUrl } from './safe-fetch'
@@ -289,7 +290,7 @@ async function research(req: Request, res: Response): Promise<void> {
     return
   }
   const email = parsed.data.email.trim().toLowerCase()
-  const domain = url.hostname.replace(/^www\./, '').toLowerCase()
+  const domain = normalizeDomain(url.hostname)
 
   const existing = await findLeadByDomain(domain)
   let extraction: SiteExtraction | undefined = existing?.lead.extraction
@@ -464,9 +465,7 @@ async function enquiry(req: Request, res: Response): Promise<void> {
   const now = new Date().toISOString()
   const email = EMAIL_RE.test(body.reply) ? body.reply.toLowerCase() : undefined
   const website = body.website ? parsePublicUrl(body.website) : null
-  const websiteDomain = website
-    ? website.hostname.replace(/^www\./, '').toLowerCase()
-    : null
+  const websiteDomain = website ? normalizeDomain(website.hostname) : null
 
   // The lead the first look created rides along by id; failing that, match on
   // the website's domain. A bogus or aged-out id is silently ignored - an
