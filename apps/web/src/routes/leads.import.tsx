@@ -29,6 +29,7 @@ import { normalizeDomain, type Lead } from '@leader/core/types'
 import { extractSite } from '../server/extract'
 import { generateProposition } from '../server/generate'
 import { IMPORT_NOT_CONFIGURED, startBulkImport } from '../server/import'
+import { HARVEST_HANDOFF_KEY } from './leads.harvest'
 
 export const Route = createFileRoute('/leads/import')({
   component: () => (
@@ -128,6 +129,15 @@ function BulkImport() {
       cancelled.current = true
       unsub()
     }
+  }, [])
+
+  // A list handed over from the directory harvester, left in sessionStorage
+  // because it can run to hundreds of lines - too long for a search param.
+  useEffect(() => {
+    const handoff = sessionStorage.getItem(HARVEST_HANDOFF_KEY)
+    if (!handoff) return
+    sessionStorage.removeItem(HARVEST_HANDOFF_KEY)
+    setRaw((prev) => (prev.trim() ? prev : handoff))
   }, [])
 
   const { entries, rejected } = useMemo(() => parseInput(raw), [raw])

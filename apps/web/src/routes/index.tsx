@@ -122,6 +122,10 @@ function Dashboard() {
               {checking ? 'Reading the mailbox…' : 'Check for replies'}
             </Button>
           ) : null}
+          <Link to="/leads/harvest" className={buttonClass('outline', 'default')}>
+            <SearchIcon size={16} />
+            Harvest directories
+          </Link>
           <Link to="/leads/import" className={buttonClass('outline', 'default')}>
             <UploadIcon size={16} />
             Bulk import
