@@ -33,6 +33,7 @@ import { useAuth } from '../lib/auth'
 import {
   applyImportResult,
   deleteLead,
+  findLeadIdByDomain,
   subscribeToLead,
   updateLead,
 } from '../lib/leads'
@@ -40,6 +41,7 @@ import {
   LEAD_STATUSES,
   STATUS_LABELS,
   leadEmail,
+  normalizeDomain,
   type EmailDraft,
   type Lead,
   type LeadStatus,
@@ -154,10 +156,22 @@ function LeadDetail({
       const extraction =
         lead.extraction ?? (await extractSite({ data: { url: lead.url } }))
       if (!lead.extraction) {
+        // The crawl follows redirects. If it landed on a business someone
+        // already has, this lead stays unimported rather than becoming a
+        // second copy that gets its own email.
+        const landed = normalizeDomain(extraction.domain)
+        if (landed !== normalizeDomain(lead.domain)) {
+          const clash = await findLeadIdByDomain(landed)
+          if (clash && clash !== lead.id) {
+            throw new Error(
+              `${lead.domain} redirects to ${landed}, which is already another lead. Nothing was imported, so the business is not contacted twice.`,
+            )
+          }
+        }
         await applyImportResult(lead.id, {
           extraction,
           companyName: extraction.companyName,
-          domain: extraction.domain,
+          domain: landed,
           status: 'researched',
         })
       }

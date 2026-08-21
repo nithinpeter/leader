@@ -275,3 +275,19 @@ export function leadEmail(
 ): string | undefined {
   return lead.contactEmail?.trim() || lead.extraction?.emails[0] || undefined
 }
+
+/**
+ * The form of a hostname a lead is keyed by: lowercase, no port, no leading
+ * `www.`. Every path that creates or matches a lead runs its host through
+ * this, so `WWW.Example.com` typed by hand and `example.com` as the crawler
+ * saw it are one business rather than two. Lives here beside `leadEmail`
+ * because the import functions need it too and must not pull in the browser
+ * Firebase client.
+ */
+export function normalizeDomain(host: string): string {
+  return host
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, '')
+    .replace(/^www\./, '')
+}

@@ -6,7 +6,7 @@ import { notifyOfRun, notifyOfSend } from '../../packages/core/src/automation/no
 import { performSend, type SendInput } from '../../packages/core/src/email-core'
 import { performExtraction } from '../../packages/core/src/extract-core'
 import { performGeneration } from '../../packages/core/src/generate-core'
-import type { Lead } from '../../packages/core/src/types'
+import { normalizeDomain, type Lead } from '../../packages/core/src/types'
 import { db } from './firebase'
 // Registers the public contact-page entry point (leader-westringia).
 import './westringia'
@@ -190,10 +190,33 @@ http('importLead', async (req, res) => {
       await fail('reading the site', e)
       return
     }
+    // The crawl follows redirects, so the domain that comes back is not always
+    // the one queued. If it landed on a business someone already has, stop
+    // here: no proposition, and nothing that would earn this lead an email.
+    const landed = normalizeDomain(extraction.domain)
+    if (landed !== normalizeDomain(lead.domain)) {
+      const clash = await db
+        .collection('leads')
+        .where('domain', '==', landed)
+        .limit(1)
+        .get()
+      const other = clash.docs.find((d) => d.id !== leadId)
+      if (other) {
+        const message = `${lead.domain} redirects to ${landed}, which is already lead ${other.id}. Nothing was imported, so the business is not contacted twice.`
+        console.log(`Skipped lead ${leadId}: ${message}`)
+        await ref.set(
+          { importState: 'failed', importError: message, updatedAt: now() },
+          { merge: true },
+        )
+        // 200, not 500: retrying will land on the same duplicate every time.
+        res.status(200).json({ skipped: 'duplicate', domain: landed })
+        return
+      }
+    }
     await ref.set(
       {
         extraction,
-        domain: extraction.domain,
+        domain: landed,
         companyName: extraction.companyName,
         status: 'researched',
         updatedAt: now(),
