@@ -83,7 +83,14 @@ function decodeEntities(s: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;|&apos;|&#x27;/gi, "'")
     .replace(/&nbsp;/g, ' ')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (whole, n) => {
+      const code = parseInt(n, 16)
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole
+    })
+    .replace(/&#(\d+);/g, (whole, n) => {
+      const code = Number(n)
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole
+    })
 }
 
 function stripToText(html: string): string {
@@ -220,7 +227,20 @@ export async function performExtraction(rawUrl: string): Promise<SiteExtraction>
     ].slice(0, 8)
 
     const emails = new Set<string>()
-    for (const m of html.matchAll(/mailto:([^"'?\s>]+)/gi)) emails.add(m[1].toLowerCase())
+    // mailto hrefs are often obfuscated against scrapers - percent-escapes or
+    // numeric character references (mailto:&#108;uke&#064;...) that a browser
+    // decodes silently. Decode before trusting the capture, and keep only what
+    // still reads as an address; stored garbage ends up in the To field.
+    for (const m of html.matchAll(/mailto:([^"'\s>]+)/gi)) {
+      let href = m[1]
+      try {
+        href = decodeURIComponent(href)
+      } catch {}
+      const address = decodeEntities(href)
+        .split('?')[0]
+        .match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i)
+      if (address && emails.size < 5) emails.add(address[0].toLowerCase())
+    }
     for (const m of stripToText(html).matchAll(
       /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/gi,
     )) {
