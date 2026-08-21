@@ -302,6 +302,38 @@ Rather not keep a long-lived key at all? Swap the `auth` step for
 [Workload Identity Federation](https://github.com/google-github-actions/auth#preferred-direct-workload-identity-federation);
 the rest of the workflow stays exactly the same.
 
+## Harvesting directories
+
+Bulk import needs a list of websites, and **Harvest directories** on the
+dashboard is where the list comes from. Professional bodies publish member
+directories - a society's *find an accountant*, an association's *find a
+builder*, a law society's *find a lawyer* - and each one is a page of
+businesses that took the trouble to join something. Paste a directory listing
+into the harvester and it pulls out the member websites: it reads the listing
+plus a few pages of its pagination, follows member profile pages where the
+website sits one click in, and skips what is never a member's own site -
+social profiles, booking platforms, government registries, the directory
+itself. The result is deduped by domain, marked against what is already in
+the pipeline, and handed to bulk import with one click.
+
+The page carries starting points for the trades worth pitching - accountants,
+builders, law firms, tuition, music, sports, touring, compliance - each
+pointing at the professional bodies whose directories list members. Two
+honest limits. A directory that draws its results with JavaScript looks empty
+to this reader, because there is no browser here; the harvester says so and
+the fix is to paste a results page that lists members as plain links, or to
+copy the websites out by hand. And a directory behind a bot wall is reported
+as such, the same way site extraction reports it. Nothing here contacts
+anyone: harvesting produces a list, and the list goes through the same import
+and outreach gates as anything else.
+
+The extraction lives in
+[packages/core/src/harvest-core.ts](./packages/core/src/harvest-core.ts) and
+runs as a server function, because the directories' CORS headers would block
+the browser from fetching them directly. It is deliberately polite: at most
+five listing pages and forty profiles per directory, four fetches in flight
+at once, and a hard cap of five hundred results.
+
 ## Bulk import
 
 **Bulk import** on the dashboard takes a pasted list of websites - one per
