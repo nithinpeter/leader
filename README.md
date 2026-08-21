@@ -161,9 +161,23 @@ overrideDailyCap (absent)     set a number to pin the cap, 0 to stop
 
 Week one starts on the first send, not on the deploy, so the ramp is not spent
 while you are still watching the logs. The day rolls over at midnight in
-Sydney, which is the timezone the schedule runs on. Setting `overrideDailyCap`
-to 0 stops all marketing mail within thirty minutes without a deploy, and
-replies keep working.
+Sydney, which is the timezone the schedule runs on.
+
+**Sending allowance** on the dashboard is the control for it, and the only
+place that distinguishes a spent allowance from a broken cron: both leave
+leads sitting at *doc_ready*, and only this says which. It shows the day's
+count live and offers three modes.
+
+| Mode         | What it does                                               |
+| ------------ | ---------------------------------------------------------- |
+| Warm-up ramp | Follow the table above. The default, and what to leave it on |
+| Fixed limit  | Hold one number every day, ignoring the ramp                |
+| Paused       | No cold emails, no follow-ups, until you change it back     |
+
+Paused takes effect on the next run, so within thirty minutes, with no deploy.
+Replies keep working in every mode. The screen only ever writes
+`overrideDailyCap`; the count and the start date belong to the cron, so
+changing the limit at midday cannot lose the morning's tally.
 
 **Replies are outside all of this.** Someone who wrote to us and is waiting on
 an answer is not marketing, capping that would lose the deal the cold email was

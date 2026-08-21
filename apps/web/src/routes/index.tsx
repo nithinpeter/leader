@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { AppShell, Protected } from '../components/AppShell'
+import { SendingAllowance } from '../components/SendingAllowance'
 import { StatusBadge } from '../components/StatusBadge'
 import {
   ChevronLeftIcon,
@@ -133,6 +134,8 @@ function Dashboard() {
       </div>
 
       <StatCards leads={leads} />
+
+      <SendingAllowance />
 
       {checked ? (
         <Alert tone={checked.added ? 'success' : 'default'}>
