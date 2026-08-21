@@ -2,8 +2,23 @@ import { performReplyCheck, type SentRef } from '../inbox-core'
 import { performExtraction } from '../extract-core'
 import { performGeneration } from '../generate-core'
 import type { SendInput } from '../email-core'
+import { verifyEmailAddress } from '../verify-email'
 import { draftFollowUp, draftReply, FOLLOW_UP_ANGLES, MAX_FOLLOW_UPS } from './sequence'
-import { leadEmail, type InboundEmail, type Lead, type OutreachEmail } from '../types'
+import {
+  dailyCap,
+  dayKey,
+  inMemoryLedger,
+  stateForToday,
+  type WarmupLedger,
+  type WarmupState,
+} from './warmup'
+import {
+  leadEmail,
+  type EmailCheck,
+  type InboundEmail,
+  type Lead,
+  type OutreachEmail,
+} from '../types'
 
 /**
  * Storage the cycle needs. The app reaches Firestore as the signed-in user and
@@ -18,7 +33,7 @@ export interface CycleAction {
   leadId: string
   company: string
   to: string
-  kind: 'cold' | 'reply' | 'follow_up' | 'stopped'
+  kind: 'cold' | 'reply' | 'follow_up' | 'stopped' | 'unverified'
   detail: string
 }
 
@@ -30,6 +45,15 @@ export interface CycleReport {
   repliesSent: number
   followUpsSent: number
   stopped: number
+  /** Addresses the pre-send check rejected outright. Nothing was sent to them. */
+  unverified: number
+  /** Checks that could not complete, usually DNS. Those leads wait for the next run. */
+  checksUnavailable: number
+  /** Today's marketing allowance, and how much of it is gone. */
+  dailyCap: number
+  sentToday: number
+  /** Leads that were due an email and did not get one because the day is spent. */
+  heldByCap: number
   actions: CycleAction[]
   errors: string[]
 }
@@ -38,9 +62,18 @@ export interface CycleReport {
  * How many first-contact emails one run may send when nothing else is set.
  * A lead finder can drop fifty leads in at once; the mailbox's reputation
  * cannot absorb fifty cold emails in one burst, so the rest wait for the
- * next half-hourly run.
+ * next half-hourly run. The daily allowance in warmup.ts is the other half of
+ * this: it limits the day, where this limits the burst.
  */
 export const DEFAULT_COLD_PER_RUN = 3
+
+/**
+ * How long a good verdict stands before the address is checked again. A domain
+ * that dies mid-sequence is rare and a bounce catches it anyway, so this is
+ * about not letting a months-old verdict speak for an address rather than
+ * about catching anything quickly.
+ */
+const CHECK_STALE_AFTER_DAYS = 30
 
 function sentEmails(lead: Lead): OutreachEmail[] {
   return (lead.emails ?? []).filter((e) => e.kind !== 'reply')
@@ -78,6 +111,10 @@ function unansweredReplies(lead: Lead): InboundEmail[] {
  *
  * Never emails a lead marked doNotContact, never answers anything that is not a
  * person writing back, and sends at most one email per lead per run.
+ *
+ * Two things gate every marketing email: the address has to survive a pre-send
+ * check, and the day's allowance has to have room left in it. Replies pass
+ * both, because a person waiting on an answer is not marketing.
  */
 export async function runCycle(opts: {
   store: LeadStore
@@ -85,12 +122,22 @@ export async function runCycle(opts: {
   send: (input: SendInput) => Promise<{ messageId: string; from: string }>
   /** Called after every automated send, before the next lead is handled. */
   notify: (action: CycleAction, email: { subject: string; body: string }) => Promise<void>
+  /**
+   * The day's marketing allowance. A dry run passes a throwaway one so the
+   * cycle behaves exactly as it would with sending on without spending the
+   * real budget. Omitted entirely, the allowance is not enforced across runs.
+   */
+  ledger?: WarmupLedger
+  /** Injected for tests; the real one does DNS. */
+  verify?: (address: string) => Promise<EmailCheck>
   /** Cap on first-contact emails per run. 0 turns first contact off. */
   maxColdPerRun?: number
   now?: Date
 }): Promise<CycleReport> {
   const { store, send, notify } = opts
   const maxColdPerRun = opts.maxColdPerRun ?? DEFAULT_COLD_PER_RUN
+  const verify = opts.verify ?? verifyEmailAddress
+  const ledger = opts.ledger ?? inMemoryLedger()
   const now = opts.now ?? new Date()
   const report: CycleReport = {
     ranAt: now.toISOString(),
@@ -100,8 +147,100 @@ export async function runCycle(opts: {
     repliesSent: 0,
     followUpsSent: 0,
     stopped: 0,
+    unverified: 0,
+    checksUnavailable: 0,
+    dailyCap: 0,
+    sentToday: 0,
+    heldByCap: 0,
     actions: [],
     errors: [],
+  }
+
+  // The day's allowance, before anything else. A ledger we cannot read fails
+  // closed: replies still go out, marketing does not. Guessing the count high
+  // costs a day of outreach, guessing it low costs the domain.
+  const today = dayKey(now)
+  let warmup: WarmupState = { startedAt: today, day: today, sentToday: 0 }
+  let cap = 0
+  try {
+    warmup = { ...stateForToday(await ledger.read(), today) }
+    cap = dailyCap(warmup, today)
+  } catch (e) {
+    report.errors.push(
+      `Could not read the sending allowance, so no marketing mail went out: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    )
+  }
+  report.dailyCap = cap
+  report.sentToday = warmup.sentToday
+
+  /** Room left in the day for one more cold email or follow-up. */
+  const roomToMarket = () => warmup.sentToday < cap
+
+  /**
+   * Spend one of the day's sends. Written straight through rather than
+   * accumulated and saved at the end, because a run that times out halfway
+   * must not forget what it already sent.
+   *
+   * A failed write must not throw: the email is already gone, and letting this
+   * bubble up would skip the notification that tells a person what went out in
+   * their name. The in-memory count still holds for the rest of the run, so
+   * the worst case is that a later run repeats today's allowance.
+   */
+  async function recordMarketingSend(): Promise<void> {
+    warmup = { ...warmup, sentToday: warmup.sentToday + 1, updatedAt: now.toISOString() }
+    report.sentToday = warmup.sentToday
+    try {
+      await ledger.write(warmup)
+    } catch (e) {
+      report.errors.push(
+        `Sent, but could not record it against today's allowance: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      )
+    }
+  }
+
+  /**
+   * The pre-send check, reusing the stored verdict while it is for the same
+   * address and still fresh. Keying on the address is what makes a bad verdict
+   * self-healing: put a better address in `contactEmail` and the next run
+   * checks that one instead.
+   */
+  async function checkAddress(lead: Lead, to: string): Promise<EmailCheck> {
+    const address = to.trim().toLowerCase()
+    const held = lead.emailCheck
+    const fresh =
+      held &&
+      held.address === address &&
+      now.getTime() - Date.parse(held.checkedAt) < CHECK_STALE_AFTER_DAYS * 86_400_000
+    if (fresh) return held
+
+    const check = await verify(address)
+    // An unknown is our resolver failing, not their address being wrong.
+    // Storing it would freeze a good address behind one bad DNS moment.
+    if (check.result !== 'unknown') await store.update(lead.id, { emailCheck: check })
+    return check
+  }
+
+  /** True when it is safe to send. Records the refusal when it is not. */
+  async function addressUsable(lead: Lead, to: string): Promise<boolean> {
+    const check = await checkAddress(lead, to)
+    if (check.result === 'deliverable') return true
+    if (check.result === 'unknown') {
+      report.checksUnavailable++
+      return false
+    }
+    report.unverified++
+    report.actions.push({
+      leadId: lead.id,
+      company: lead.companyName,
+      to,
+      kind: 'unverified',
+      detail: `Not emailed: ${check.reason}`,
+    })
+    return false
   }
 
   const leads = await store.list()
@@ -185,6 +324,13 @@ export async function runCycle(opts: {
         // person; the cold sequence is not that. A human replies instead.
         if (current.source === 'westringia-contact') continue
         if (report.coldSent >= maxColdPerRun) continue
+        // Before the crawl and the model call, not after: research we cannot
+        // act on today is spend with nothing to show for it, and the lead is
+        // still here on the next run.
+        if (!roomToMarket()) {
+          report.heldByCap++
+          continue
+        }
 
         let extraction = current.extraction
         if (!extraction) {
@@ -210,6 +356,7 @@ export async function runCycle(opts: {
         const draft = proposition.email
         const coldTo = leadEmail(current)
         if (!draft || !coldTo) continue
+        if (!(await addressUsable(current, coldTo))) continue
 
         const result = await send({
           to: coldTo,
@@ -235,6 +382,7 @@ export async function runCycle(opts: {
           lastAutomatedAt: now.toISOString(),
         })
         report.coldSent++
+        await recordMarketingSend()
         const action: CycleAction = {
           leadId: current.id,
           company: current.companyName,
@@ -305,6 +453,14 @@ export async function runCycle(opts: {
       const dueAt = lastOutboundAt(current) + waitDays * 24 * 60 * 60 * 1000
       if (now.getTime() < dueAt) continue
 
+      // A follow-up is marketing too, and it spends from the same day. Both
+      // gates go before the model call that drafts it.
+      if (!roomToMarket()) {
+        report.heldByCap++
+        continue
+      }
+      if (!(await addressUsable(current, to))) continue
+
       const step = done + 1
       const draft = await draftFollowUp(current, step)
       const body = draft.body
@@ -331,6 +487,7 @@ export async function runCycle(opts: {
         lastAutomatedAt: now.toISOString(),
       })
       report.followUpsSent++
+      await recordMarketingSend()
       const action: CycleAction = {
         leadId: current.id,
         company: current.companyName,

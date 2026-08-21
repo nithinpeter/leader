@@ -204,6 +204,22 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
         </div>
       ) : null}
 
+      {/* The cron checks an address before it sends and will not use one that
+          fails. Saying so here is the only way that decision is visible: the
+          lead would otherwise just sit at doc_ready looking untouched. Sending
+          by hand is still allowed, because a person can see what the check
+          could not. */}
+      {lead.emailCheck?.result === 'undeliverable' &&
+      lead.emailCheck.address === to.trim().toLowerCase() ? (
+        <div className="mb-4">
+          <Alert tone="destructive">
+            The automation will not email <code>{lead.emailCheck.address}</code>:{' '}
+            {lead.emailCheck.reason}. Put a better address in the box below and
+            it gets checked again on the next run.
+          </Alert>
+        </div>
+      ) : null}
+
       {configured === false ? (
         <Alert>
           Sending is not set up. Put the Spacemail address and password in{' '}

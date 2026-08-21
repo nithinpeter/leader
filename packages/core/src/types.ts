@@ -209,6 +209,27 @@ export interface ContactRequest {
 }
 
 /**
+ * What a pre-send check made of an address. Three outcomes rather than two:
+ * `undeliverable` is structural and will be just as wrong on the next run,
+ * while `unknown` means the check itself failed and the address deserves
+ * another go later. Only `undeliverable` stops an automated send for good.
+ */
+export type EmailCheckResult = 'deliverable' | 'undeliverable' | 'unknown'
+
+export interface EmailCheck {
+  /**
+   * The address that was checked. The cycle re-checks when this stops matching
+   * the address it is about to use, so correcting `contactEmail` by hand
+   * clears a bad verdict without anyone having to delete anything.
+   */
+  address: string
+  result: EmailCheckResult
+  /** Why, written for whoever reads the lead rather than for a log. */
+  reason: string
+  checkedAt: string
+}
+
+/**
  * Where a bulk-imported lead sits in the import machinery. Absent once the
  * import finishes cleanly, so hand-added leads and completed imports look
  * identical.
@@ -241,6 +262,12 @@ export interface Lead {
    * a record of what the site said.
    */
   contactEmail?: string
+  /**
+   * The last pre-send check of the address outreach would use. The cron will
+   * not send to an address this marks undeliverable; a person still can, from
+   * the lead page, with the reason in front of them.
+   */
+  emailCheck?: EmailCheck
   /**
    * They asked us to stop, or the address is dead. Nothing may email this lead
    * again, by hand or on the cron.

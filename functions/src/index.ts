@@ -3,6 +3,11 @@ import { CloudTasksClient } from '@google-cloud/tasks'
 import { FieldValue } from 'firebase-admin/firestore'
 import { runCycle, type LeadStore } from '../../packages/core/src/automation/cycle'
 import { notifyOfRun, notifyOfSend } from '../../packages/core/src/automation/notify'
+import {
+  inMemoryLedger,
+  type WarmupLedger,
+  type WarmupState,
+} from '../../packages/core/src/automation/warmup'
 import { performSend, type SendInput } from '../../packages/core/src/email-core'
 import { performExtraction } from '../../packages/core/src/extract-core'
 import { performGeneration } from '../../packages/core/src/generate-core'
@@ -28,6 +33,24 @@ const store: LeadStore = {
       .collection('leads')
       .doc(id)
       .set({ ...patch, updatedAt: new Date().toISOString() }, { merge: true })
+  },
+}
+
+/**
+ * The sending allowance, kept in one document so it can be read and changed
+ * without a deploy. Open it in the Firestore console to see how much of today
+ * is spent; set `overrideDailyCap` on it to pin the number, or to 0 to stop
+ * marketing mail immediately while replies keep working.
+ */
+const WARMUP_DOC = 'settings/outreach'
+
+const warmupLedger: WarmupLedger = {
+  async read() {
+    const snap = await db.doc(WARMUP_DOC).get()
+    return snap.exists ? (snap.data() as WarmupState) : null
+  },
+  async write(state) {
+    await db.doc(WARMUP_DOC).set(state, { merge: true })
   },
 }
 
@@ -286,6 +309,10 @@ http('runOutreach', async (req, res) => {
       // Every automated email tells a person what just went out in their name.
       notify: dryRun ? async () => {} : notifyOfSend,
       maxColdPerRun: coldPerRun(),
+      // A dry run reads the real ledger, so the cap and the week of the ramp
+      // are the ones it would actually face, and writes to a throwaway copy so
+      // watching the automation for a week does not spend a week's allowance.
+      ledger: dryRun ? inMemoryLedger(await warmupLedger.read()) : warmupLedger,
     })
     if (!dryRun) await notifyOfRun(report)
 

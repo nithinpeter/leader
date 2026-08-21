@@ -101,8 +101,9 @@ leads still at *new*, *researched* or *doc_ready*; a status beyond that means a
 person moved the lead along by hand, so the cold email is theirs to send. It
 sends at most `COLD_EMAILS_PER_RUN` first emails per run (default 3, set it to
 0 to turn first contact off), because a burst of cold email is how a mailbox
-loses its reputation. Without a Gemini key the template draft is never sent;
-the lead stops at *doc_ready* for a person to handle.
+loses its reputation. That is the burst limit; [the day has its own, and it
+climbs](#how-much-goes-out-in-a-day). Without a Gemini key the template draft
+is never sent; the lead stops at *doc_ready* for a person to handle.
 
 The four follow-ups each have their own job, because a model given "write a
 follow-up" four times writes the same email four times:
@@ -125,6 +126,90 @@ and an opt-out sets `doNotContact` so nothing can email that lead again, from
 the cron or by hand. The reply drafter is told it may not invent a price, a
 timeline or a commitment; asked for cost it says the two weeks are priced on
 their own and a fixed price comes before any build.
+
+### How much goes out in a day
+
+`COLD_EMAILS_PER_RUN` limits a burst and nothing else. Three first emails every
+thirty minutes is 144 a day, and 144 is not by itself a lot — a small
+consultancy sending that many is unremarkable. What is not unremarkable is a
+domain with no sending history going from zero to 144 overnight, which is the
+shape of a compromised mailbox rather than a business. So there is a second
+limit on the day, and it climbs:
+
+| Week | Marketing emails per day |
+| ---- | ------------------------ |
+| 1    | 30                       |
+| 2    | 45                       |
+| 3    | 65                       |
+| 4    | 90                       |
+| 5    | 120                      |
+| 6+   | 144                      |
+
+The numbers live in `WARMUP_DAILY_CAPS` in
+[packages/core/src/automation/warmup.ts](./packages/core/src/automation/warmup.ts);
+edit them there and nothing else needs to know.
+
+The count lives in a single Firestore document, `settings/outreach`, rather
+than being recomputed from the leads, so you can open it and read it:
+
+```
+startedAt        2026-08-22   the day the first marketing email went out
+day              2026-08-22   the day sentToday counts
+sentToday        17
+overrideDailyCap (absent)     set a number to pin the cap, 0 to stop
+```
+
+Week one starts on the first send, not on the deploy, so the ramp is not spent
+while you are still watching the logs. The day rolls over at midnight in
+Sydney, which is the timezone the schedule runs on. Setting `overrideDailyCap`
+to 0 stops all marketing mail within thirty minutes without a deploy, and
+replies keep working.
+
+**Replies are outside all of this.** Someone who wrote to us and is waiting on
+an answer is not marketing, capping that would lose the deal the cold email was
+for, and mail people actually engage with helps a domain rather than costing
+it. Cold emails and follow-ups spend the allowance; replies do not.
+
+A dry run reads the real ledger, so the cap it sees is the one it would face,
+and writes to a throwaway copy. Watching the automation for a week does not
+spend a week of allowance.
+
+### Checking the address before sending
+
+Bounces cost a sending domain more than the emails would ever have earned back:
+a run of them reads, correctly, as a list the sender did not build. The
+addresses here are scraped off websites, and a good share of what a crawler
+finds is not a mailbox — a `noreply@`, the placeholder address a theme shipped
+with, or a filename the address regex matched (`logo@2x.png` is a real
+example). So every automated send checks the address first, in
+[packages/core/src/verify-email.ts](./packages/core/src/verify-email.ts):
+syntax, a small list of local parts nobody reads and domains that only appear
+in template copy, then a DNS lookup for whether the domain accepts mail at all.
+A domain with no MX but an address record passes, because RFC 5321 says fall
+back to it and plenty of small business domains rely on exactly that.
+
+`info@` and `hello@` pass on purpose. For a ten-person trade business that *is*
+the owner's inbox, and dropping role addresses would drop most of the pipeline.
+
+Three outcomes, and the third is the one that matters:
+
+- **deliverable** — send.
+- **undeliverable** — structural, so it will be just as wrong next run. The
+  verdict is written to the lead, the cron stops using that address, and the
+  lead page says why. It is keyed by address, so putting a better one in the
+  contact field gets it re-checked on the next run with nothing to undo.
+- **unknown** — the resolver timed out or failed. That is our problem, not the
+  address's, so nothing is written down and the lead is tried again next run.
+
+What this does not do is open an SMTP session and probe with `RCPT TO`, the
+only way to learn whether a specific mailbox exists. Google Cloud blocks
+outbound port 25 from Cloud Functions so the call cannot leave, and most
+business mail sits behind Google or Microsoft, who accept every probe anyway.
+Per-mailbox certainty has to come from a verification API over HTTPS; drop one
+in behind `verifyEmailAddress` and the rest of the cycle needs no changes.
+
+Neither of these needs a deploy step, new secrets or new environment
+variables. The ledger document creates itself on the first send.
 
 Worth being clear-eyed: this sends email written by a model to real businesses
 with nobody reading it first. `AUTOMATION_ENABLED` must be exactly `true`
@@ -215,14 +300,28 @@ gcloud scheduler jobs create http leader-outreach-30min \
   --oidc-service-account-email="$SA" --oidc-token-audience="$URL" \
   --headers="x-cron-secret=$(gcloud secrets versions access latest --secret=leader-cron-secret)" \
   --attempt-deadline=900s --max-retry-attempts=0
+
+# The OIDC token above only opens the door if the same account is an invoker
+# on the service. Without this the job runs every 30 minutes and every run is
+# a 403 in the logs, which looks exactly like a quiet cron with nothing to do.
+gcloud run services add-iam-policy-binding leader-outreach \
+  --region=australia-southeast1 \
+  --member="serviceAccount:$SA" --role=roles/run.invoker
 ```
 
 #### 6. When you're ready, turn it on
 
 ```bash
 gcloud functions deploy leader-outreach --gen2 --region=australia-southeast1 \
+  --source=functions --entry-point=runOutreach \
   --update-env-vars=AUTOMATION_ENABLED=true
 ```
+
+`--source` and `--entry-point` are not optional here. Every `gcloud functions
+deploy` rebuilds, and without `--source` it builds the current directory: from
+the repo root that fails with `function.js does not exist`. The env vars and
+secrets you set above survive, because `--update-env-vars` only touches the
+one key it names.
 
 No `GOOGLE_GENERATIVE_AI_API_KEY`? The flow still works end to end with a
 clearly-marked template draft, so you can set up Firebase first and add the
@@ -542,10 +641,13 @@ on restricted networks. Set `SMTP_USER` to the full mailbox address
 ([hello@westringia.com](mailto:hello@westringia.com)) and `SMTP_PASS` to its password. Every send BCCs the
 mailbox itself, since SMTP sends don't land in the Sent folder.
 
-Two things to keep in mind for cold outreach from your primary domain:
-keep volume low (a handful a day) to protect the mailbox's reputation, and
-leave the identification and opt-out lines in the drafts. Commercial email in
-Australia falls under the Spam Act.
+Two things to keep in mind for cold outreach from your primary domain. Volume
+is handled for you: [the daily allowance](#how-much-goes-out-in-a-day) starts
+at 30 and climbs weekly, and [every address is checked before
+sending](#checking-the-address-before-sending), because bounces cost the
+mailbox more than volume does. The other one is on you: leave the
+identification and opt-out lines in the drafts. Commercial email in Australia
+falls under the Spam Act.
 
 ### Run
 

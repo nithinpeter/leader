@@ -57,7 +57,11 @@ export async function notifyOfRun(report: CycleReport): Promise<void> {
   const to = notifyAddress()
   if (!to) return
   const acted =
-    report.coldSent + report.repliesSent + report.followUpsSent + report.stopped
+    report.coldSent +
+    report.repliesSent +
+    report.followUpsSent +
+    report.stopped +
+    report.unverified
   if (acted === 0 && report.errors.length === 0) return
 
   await performSend({
@@ -72,6 +76,19 @@ export async function notifyOfRun(report: CycleReport): Promise<void> {
       `Replies sent: ${report.repliesSent}`,
       `Follow-ups sent: ${report.followUpsSent}`,
       `Stopped (bounced or asked us to stop): ${report.stopped}`,
+      '',
+      // The two numbers that explain a quiet run, so it never reads as "the
+      // cron is broken" when it is actually working exactly as intended.
+      `Marketing sent today: ${report.sentToday} of ${report.dailyCap}`,
+      ...(report.heldByCap
+        ? [`Waiting on tomorrow's allowance: ${report.heldByCap}`]
+        : []),
+      ...(report.unverified
+        ? [`Addresses rejected before sending: ${report.unverified}`]
+        : []),
+      ...(report.checksUnavailable
+        ? [`Address checks that could not complete: ${report.checksUnavailable}`]
+        : []),
       '',
       ...report.actions.map((a) => `${a.company}: ${a.detail} (${a.to})`),
       ...(report.errors.length ? ['', 'Errors:', ...report.errors] : []),
