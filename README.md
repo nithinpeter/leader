@@ -134,11 +134,23 @@ a week before letting it out.
 
 ### Deploying it
 
+Four separate things have to exist before the cron works: the secrets it
+reads, an identity it runs as, the function itself, and a schedule to poke it
+every 30 minutes. Do them in that order — each step needs the one before it.
+
+This is a one-time job. Once all of it exists, GitHub Actions redeploys the
+code for you on every push (see [Redeploys from GitHub Actions](#redeploys-from-github-actions)).
+
+#### 1. Build the bundle
+
 ```bash
 pnpm build:functions           # bundles functions/src + packages/core to functions/dist
 ```
 
-Store the secrets once:
+#### 2. Store the passwords and keys
+
+These live in Secret Manager rather than in the deploy command, so they never
+end up in your shell history or on the function's settings page.
 
 ```bash
 printf '%s' 'SPACEMAIL_PASSWORD' | gcloud secrets create leader-smtp-pass --data-file=-
@@ -146,7 +158,16 @@ printf '%s' 'GEMINI_API_KEY'     | gcloud secrets create leader-gemini-key --dat
 printf '%s' "$(openssl rand -hex 24)" | gcloud secrets create leader-cron-secret --data-file=-
 ```
 
-Give the function its own service account, with Firestore and secret access:
+`leader-cron-secret` isn't a password you picked — it's a random string the
+function and whatever calls it share. A stranger who discovers the function's
+URL can't make it run without that string.
+
+#### 3. Give the function an identity
+
+Every Cloud Function runs *as* some account, and that account is what Google
+checks when the code touches anything. `leader-cron` is that account here, and
+it gets exactly two powers: read/write Firestore, and read the three secrets
+above.
 
 ```bash
 PROJECT=$(gcloud config get-value project)
@@ -160,8 +181,11 @@ for s in leader-smtp-pass leader-gemini-key leader-cron-secret; do
 done
 ```
 
-Deploy. Note `AUTOMATION_ENABLED=false`: it runs and logs but sends nothing
-until you flip it.
+#### 4. Deploy the function
+
+Note `AUTOMATION_ENABLED=false`. The function runs the complete loop and logs
+every email it *would* have sent, but sends nothing until you flip that. Leave
+it off for a week and read the logs.
 
 ```bash
 gcloud functions deploy leader-outreach \
@@ -173,9 +197,14 @@ gcloud functions deploy leader-outreach \
   --set-secrets=SMTP_PASS=leader-smtp-pass:latest,GOOGLE_GENERATIVE_AI_API_KEY=leader-gemini-key:latest,CRON_SECRET=leader-cron-secret:latest
 ```
 
-Then the schedule. `**--max-retry-attempts=0` matters**: a retry after a
-timeout would send the same email twice, and missing one run costs you thirty
-minutes.
+#### 5. Schedule it
+
+Cloud Scheduler is the thing that actually calls the function every 30
+minutes; the function has no timer of its own.
+
+**`--max-retry-attempts=0` matters.** If a run times out halfway through,
+a retry would send the same emails a second time. Missing one run costs you
+thirty minutes; double-emailing a prospect costs you the prospect.
 
 ```bash
 URL=$(gcloud functions describe leader-outreach --region=australia-southeast1 --gen2 --format='value(serviceConfig.uri)')
@@ -188,7 +217,7 @@ gcloud scheduler jobs create http leader-outreach-30min \
   --attempt-deadline=900s --max-retry-attempts=0
 ```
 
-Watch a few runs, then turn it on:
+#### 6. When you're ready, turn it on
 
 ```bash
 gcloud functions deploy leader-outreach --gen2 --region=australia-southeast1 \
@@ -201,36 +230,77 @@ key later.
 
 ### Redeploys from GitHub Actions
 
-After the first manual deploys, pushes to `main` that touch the bundled code
-(`functions/`, `packages/core/`) redeploy the functions automatically
-(`.github/workflows/deploy-function.yml`; it can also be run by hand from the
-Actions tab). It covers all three entry points — `leader-outreach`,
-`leader-import-lead` and `leader-bulk-import` — but only ones that already
-exist: a function that has never been deployed is skipped rather than created
-half-configured, so the first deploy of each stays manual. The workflow passes
-no env vars or secrets, so a redeploy keeps whatever the function already
-has — it can't flip `AUTOMATION_ENABLED` or detach a secret.
+Once a function exists, you shouldn't be deploying by hand any more. Pushes to
+`main` that touch the bundled code (`functions/`, `packages/core/`) redeploy
+all three functions automatically — `leader-outreach`, `leader-import-lead`
+and `leader-bulk-import`. The workflow is
+[`.github/workflows/deploy-function.yml`](./.github/workflows/deploy-function.yml)
+and you can also trigger it by hand from the repo's Actions tab.
 
-One-time setup — a deployer service account that can deploy the function and
-act as `leader-cron`:
+Two deliberate limits, both there to stop CI quietly breaking production:
+
+- **It only redeploys functions that already exist.** A function that has
+  never been deployed is skipped, not created. The first deploy of each one is
+  the manual one above, because that's where env vars and secrets get set.
+- **It passes no env vars and no secrets.** A `gcloud functions deploy` that
+  omits `--set-env-vars` / `--set-secrets` keeps whatever the function already
+  has. So a redeploy can't flip `AUTOMATION_ENABLED` back to `false` or
+  detach a secret, no matter what's in the repo.
+
+#### One-time setup
+
+GitHub needs its own Google Cloud identity to deploy with — it can't use your
+laptop's `gcloud` login. That identity is a second service account,
+`leader-deployer`, and it needs two permissions.
 
 ```bash
 PROJECT=$(gcloud config get-value project)
 DEPLOYER=leader-deployer@$PROJECT.iam.gserviceaccount.com
+
+# Create it first — the two bindings below fail if it doesn't exist yet.
 gcloud iam service-accounts create leader-deployer --display-name="GitHub Actions deployer"
+
+# (a) may deploy Cloud Functions
 gcloud projects add-iam-policy-binding "$PROJECT" \
   --member="serviceAccount:$DEPLOYER" --role=roles/cloudfunctions.developer
+
+# (b) may hand leader-cron to a function as its runtime identity
 gcloud iam service-accounts add-iam-policy-binding "leader-cron@$PROJECT.iam.gserviceaccount.com" \
   --member="serviceAccount:$DEPLOYER" --role=roles/iam.serviceAccountUser
+```
+
+Binding (b) is the one that's easy to miss, and it's granted **on the
+`leader-cron` account, not on the project**. The deploy command says
+`--service-account=leader-cron@...`, which means the deployer is acting as
+that account, and Google makes you say so explicitly. Without it the deploy
+fails with `PERMISSION_DENIED: iam.serviceaccounts.actAs`.
+
+Note what the deployer deliberately *doesn't* get: `roles/run.admin`. That's
+why the workflow passes no `--allow-unauthenticated` flag — changing a
+function's invoker policy needs rights this account doesn't have, so a
+redeploy simply inherits whatever policy the function already had.
+
+#### Then give GitHub the key
+
+```bash
 gcloud iam service-accounts keys create leader-deployer-key.json --iam-account="$DEPLOYER"
 ```
 
-Then in the GitHub repo under **Settings → Secrets and variables → Actions**
-add two secrets: `GCP_PROJECT_ID` (the project id) and `GCP_SA_KEY` (the full
-contents of `leader-deployer-key.json`) — and delete the local key file. If
-you'd rather not keep a long-lived key at all, swap the `auth` step for
+In the repo under **Settings → Secrets and variables → Actions**, on the
+**Secrets** tab (not Variables — the workflow reads them as `secrets.*`), add:
+
+| Secret           | Value                                          |
+| ---------------- | ---------------------------------------------- |
+| `GCP_PROJECT_ID` | your project id, e.g. `leader-west`             |
+| `GCP_SA_KEY`     | the entire contents of `leader-deployer-key.json` |
+
+Then **delete the local key file** — `rm leader-deployer-key.json`. It's a
+password to your cloud project in plain text, and the `.gitignore` patterns
+for service-account keys don't match that filename.
+
+Rather not keep a long-lived key at all? Swap the `auth` step for
 [Workload Identity Federation](https://github.com/google-github-actions/auth#preferred-direct-workload-identity-federation);
-the rest of the workflow stays the same.
+the rest of the workflow stays exactly the same.
 
 ## Bulk import
 
@@ -243,17 +313,36 @@ and one slow or broken site never stalls the rest. Progress lands in the
 pipeline live; failures keep the reason on the lead, with a retry button on
 the lead page.
 
-Two Cloud Functions do the work:
+The work is split across two Cloud Functions, which is worth explaining because
+one function would look simpler:
 
-- `bulkImport` takes the batch of lead ids and enqueues one Cloud Tasks task
-  per lead. The queue's dispatch rate is the only throttle, so crawling and
-  Gemini calls are paced there, not in code.
-- `importLead` handles exactly one company: crawl the site, generate the
-  proposition, update the lead. A failure answers 500 so the queue retries
-  with backoff (a timeout or a rate-limited model usually passes on the second
-  go); the extraction is saved as soon as it exists, so a retry skips the
-  crawl. When the retries run out the lead stays marked *Import failed* with
-  the reason.
+- `bulkImport` — the **dispatcher**. Takes the batch of lead ids and enqueues
+  one Cloud Tasks task per lead. It does nothing slow, so it finishes in
+  seconds whether the batch is five leads or five hundred.
+- `importLead` — the **worker**. Handles exactly one company per invocation:
+  crawl the site, generate the proposition, update the lead.
+
+Importing one lead means crawling a website and then waiting on a model — call
+it 30 to 60 seconds. A single function looping over three hundred of those
+would hit its timeout and die halfway through, every time. Splitting it buys
+four things that loop can't have:
+
+1. **It runs in parallel.** Hundreds of invocations at once, instead of one
+   loop grinding through leads in sequence.
+2. **One bad site can't stall the batch.** A site that hangs or errors takes
+   down its own invocation and nothing else.
+3. **Retries are per lead.** A failure answers 500 and Cloud Tasks retries
+   *that lead* with backoff — a timeout or a rate-limited model call usually
+   passes on the second go. One big function retrying would re-crawl and
+   re-bill the two hundred leads that already succeeded. The extraction is
+   saved as soon as it exists, so even a retry of the same lead skips the
+   crawl it already did.
+4. **Throttling is configuration, not code.** The queue's dispatch rate paces
+   crawling and Gemini calls. Nothing in the source has to know about rate
+   limits.
+
+When the retries do run out, the lead stays marked *Import failed* with the
+reason on it, and there's a retry button on the lead page.
 
 With nothing deployed, the import page still works: it falls back to running
 the same steps from the browser tab, a few leads at a time, and says so. Fine
@@ -261,9 +350,21 @@ for a dozen leads; deploy the functions for hundreds.
 
 ### Deploying it
 
-Reuses the service account and secrets from the outreach cron above, plus a
-Cloud Tasks queue. The queue needs the enqueuer role and permission to mint
-OIDC tokens for the worker:
+This reuses the `leader-cron` service account and the secrets you already set
+up for the outreach cron, so do that section first. What's new is the Cloud
+Tasks queue plus the two functions.
+
+**Order matters here.** The queue must exist before the worker, and the worker
+must exist before the dispatcher — the dispatcher needs the worker's URL baked
+into its environment. Run all of it in one shell session; later steps use
+variables set by earlier ones.
+
+#### 1. The queue
+
+This is the thing that holds the per-lead tasks and hands them out at a
+controlled rate. The numbers below are the throttle for the whole import: two
+leads dispatched per second, ten in flight at once, three attempts each before
+giving up.
 
 ```bash
 PROJECT=$(gcloud config get-value project)
@@ -273,14 +374,23 @@ REGION=australia-southeast1
 gcloud tasks queues create leader-import --location=$REGION \
   --max-dispatches-per-second=2 --max-concurrent-dispatches=10 \
   --max-attempts=3 --min-backoff=60s
+
+# may put tasks on a queue
 gcloud projects add-iam-policy-binding "$PROJECT" \
   --member="serviceAccount:$SA" --role=roles/cloudtasks.enqueuer
+
+# may mint OIDC tokens as itself, so the queue can prove who it is to the worker
 gcloud iam service-accounts add-iam-policy-binding "$SA" \
   --member="serviceAccount:$SA" --role=roles/iam.serviceAccountUser
 ```
 
-Deploy the worker first, since the dispatcher needs its URL. Same bundle as
-the cron, different entry points:
+That last binding looks odd — the account being granted access to itself — but
+it's what lets the queue call the worker carrying a token that says "I am
+leader-cron".
+
+#### 2. The worker
+
+Same bundle as the cron, different entry point.
 
 ```bash
 pnpm build:functions
@@ -293,10 +403,15 @@ gcloud functions deploy leader-import-lead \
   --set-env-vars=GEMINI_MODEL=gemini-3.1-pro-preview \
   --set-secrets=GOOGLE_GENERATIVE_AI_API_KEY=leader-gemini-key:latest,CRON_SECRET=leader-cron-secret:latest
 
+# grab its URL for the next step, and let leader-cron call it
 WORKER_URL=$(gcloud functions describe leader-import-lead --region=$REGION --gen2 --format='value(serviceConfig.uri)')
 gcloud functions add-invoker-policy-binding leader-import-lead \
   --region=$REGION --member="serviceAccount:$SA"
+```
 
+#### 3. The dispatcher
+
+```bash
 gcloud functions deploy leader-bulk-import \
   --gen2 --runtime=nodejs22 --region=$REGION \
   --source=functions --entry-point=bulkImport \
@@ -306,19 +421,28 @@ gcloud functions deploy leader-bulk-import \
   --set-secrets=CRON_SECRET=leader-cron-secret:latest
 ```
 
-`leader-bulk-import` is reachable from the internet because the app server
-(not a Google identity) calls it; the `x-cron-secret` header is the lock, and
-without it the function answers 403 before touching anything. The worker stays
-`--no-allow-unauthenticated` - only Cloud Tasks calls it, with an OIDC token
-minted for `$SA`.
+The two functions are locked down differently, on purpose:
 
-Finally, tell the app where the dispatcher lives. In the app server's
-environment (Vercel, `.env`, wherever the TanStack server runs):
+- The **worker** is `--no-allow-unauthenticated`. Only Cloud Tasks ever calls
+  it, and it does so with an OIDC token minted for `leader-cron`. Nothing on
+  the open internet can reach it.
+- The **dispatcher** is `--allow-unauthenticated`, because the thing that calls
+  it is your app server — not a Google identity, so it has no token to present.
+  The `x-cron-secret` header is the lock instead: without it the function
+  answers 403 before touching anything.
+
+#### 4. Tell the app where the dispatcher is
+
+In the app server's environment (Vercel, `.env`, wherever the TanStack server
+runs):
 
 ```bash
 BULK_IMPORT_URL=$(gcloud functions describe leader-bulk-import --region=$REGION --gen2 --format='value(serviceConfig.uri)')
 CRON_SECRET=$(gcloud secrets versions access latest --secret=leader-cron-secret)
 ```
+
+That's the last manual deploy. From here GitHub Actions redeploys all three
+functions on pushes to `main`.
 
 ## Setup
 
