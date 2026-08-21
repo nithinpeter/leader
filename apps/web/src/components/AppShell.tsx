@@ -48,7 +48,7 @@ function ThemeToggle() {
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboardIcon, exact: true },
-  { to: '/leads/new', label: '+ lead', icon: PlusIcon, exact: false },
+  { to: '/leads/new', label: 'New lead', icon: PlusIcon, exact: false },
 ]
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
