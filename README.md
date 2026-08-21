@@ -589,6 +589,20 @@ CRON_SECRET=$(gcloud secrets versions access latest --secret=leader-cron-secret)
 That's the last manual deploy of the import pair. From here GitHub Actions
 redeploys every already-deployed function on pushes to `main`.
 
+## The marketing pipeline
+
+The pipeline for Westringia Labs marketing material lives here too, under
+**Marketing** in the sidebar: drafting LinkedIn posts, the review checklist
+and approve → publish flow (`/marketing`), the brand guidelines
+(`/marketing/brand`), and the poster-card templates that
+`tools/shoot-cards.mjs` screenshots (`/marketing/cards`). Posts and their
+card PNGs live in Firestore (`marketing_posts` / `marketing_cards`) next to
+the leads; only the publish call runs server-side, because it holds the
+LinkedIn organisation token. Posted is final — a published post can never be
+edited or deleted, so the record of what went out stands. Setup, environment
+variables and the LinkedIn app walkthrough are in
+[docs/marketing.md](./docs/marketing.md).
+
 ## The contact page
 
 westringia.com/contact runs on this repo too. The page's "show us your

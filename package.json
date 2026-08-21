@@ -9,11 +9,13 @@
     "build": "pnpm --filter @leader/web build",
     "start": "pnpm --filter @leader/web start",
     "typecheck": "pnpm -r typecheck && tsc -p functions",
-    "build:functions": "esbuild functions/src/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=functions/dist/index.js"
+    "build:functions": "esbuild functions/src/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=functions/dist/index.js",
+    "shoot:cards": "node tools/shoot-cards.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "esbuild": "^0.28.2",
+    "playwright-core": "^1.62.1",
     "typescript": "^7.0.2"
   }
 }
