@@ -441,8 +441,68 @@ BULK_IMPORT_URL=$(gcloud functions describe leader-bulk-import --region=$REGION 
 CRON_SECRET=$(gcloud secrets versions access latest --secret=leader-cron-secret)
 ```
 
-That's the last manual deploy. From here GitHub Actions redeploys all three
-functions on pushes to `main`.
+That's the last manual deploy of the import pair. From here GitHub Actions
+redeploys every already-deployed function on pushes to `main`.
+
+## The contact page
+
+westringia.com/contact runs on this repo too. The page's "show us your
+website" tool and its enquiry form both call one public Cloud Function,
+`leader-westringia` ([functions/src/westringia.ts](./functions/src/westringia.ts)),
+which reuses the exact extraction + generation pipeline the CRM uses and
+writes into the same `leads` collection. Two POST routes:
+
+- **`/research`** - body `{ url, email, consent: true }`. The email is
+  required and consent must be ticked before anything runs; both are stored on
+  the lead as proof (the exact consent sentence, when, and a salted hash of
+  the network address - never the address itself). If a lead for that domain
+  is already researched, the stored research answers immediately and nothing
+  is re-crawled or re-billed. Otherwise the site is read through an
+  SSRF-guarded fetcher ([functions/src/safe-fetch.ts](./functions/src/safe-fetch.ts))
+  and written up, and the visit lands as a lead either way - created with
+  `source: 'westringia-contact'`, or appended to the existing one. The
+  response is a public-safe subset (summary, use cases, tech signals) - never
+  the cold email draft.
+- **`/enquiry`** - the contact form. Appends to the lead the research created
+  (matched by id, falling back to domain), moves it to *in conversation*, and
+  emails `NOTIFY_EMAIL` so the same-day-reply promise has a human behind it.
+  Works as JSON and as a no-JS urlencoded post (303 back to the static site).
+
+Leads with `source: 'westringia-contact'` are never cold-emailed by the
+outreach cron - they asked to hear from a person, and the cold sequence is not
+that. Reply by hand from the lead page.
+
+Abuse controls: 5 research / 10 enquiry calls per IP per hour, a global daily
+fuse on Gemini spend (`CONTACT_DAILY_RESEARCH_CAP`, default 300), a honeypot
+field, and hard output caps on everything echoed back to the page.
+
+### Deploying it
+
+Reuses the `leader-cron` service account and secrets from the outreach cron,
+so do that section first. This is the one function that must allow
+unauthenticated invoke - anonymous visitors are the audience:
+
+```bash
+gcloud functions deploy leader-westringia \
+  --gen2 --runtime=nodejs22 --region=australia-southeast1 \
+  --source=functions --entry-point=westringia \
+  --trigger-http --allow-unauthenticated \
+  --service-account="$SA" --timeout=300s --memory=512Mi \
+  --set-env-vars=SMTP_USER=hello@westringia.com,NOTIFY_EMAIL=you@westringia.com,APP_URL=https://your-app-url,GEMINI_MODEL=gemini-3.1-pro-preview,CONTACT_DAILY_RESEARCH_CAP=300 \
+  --set-secrets=SMTP_PASS=leader-smtp-pass:latest,GOOGLE_GENERATIVE_AI_API_KEY=leader-gemini-key:latest,CRON_SECRET=leader-cron-secret:latest
+```
+
+`CRON_SECRET` is not an auth gate here (the routes are public by design); it
+salts the hashed network addresses. A fresh research call is a crawl plus a
+pro-model generation, so expect it to take a minute or two; set `GEMINI_MODEL`
+to a flash model on this function alone if that is too slow for the page.
+
+Then point the static site at it - in westringia.com's `src/site.ts`, set
+`apiBase` to the function's URL:
+
+```bash
+gcloud functions describe leader-westringia --region=australia-southeast1 --gen2 --format='value(serviceConfig.uri)'
+```
 
 ## Setup
 

@@ -24,6 +24,20 @@ function normalizeUrl(raw: string): URL {
  */
 type FetchOutcome = { ok: true; html: string } | { ok: false; reason: string }
 
+/**
+ * The slice of fetch the extractor uses, injectable so a public endpoint can
+ * swap in an SSRF-guarded client for visitor-supplied URLs. Everything the
+ * app or cron runs itself stays on the platform fetch.
+ */
+export type HtmlFetch = (
+  url: string,
+  init: {
+    signal: AbortSignal
+    redirect: 'follow'
+    headers: Record<string, string>
+  },
+) => Promise<Response>
+
 /** Read at most `maxBytes` of the body, then hang up on the rest. */
 async function readCapped(res: Response, maxBytes: number): Promise<string> {
   const reader = res.body?.getReader()
@@ -46,11 +60,11 @@ async function readCapped(res: Response, maxBytes: number): Promise<string> {
   return new TextDecoder('utf-8', { fatal: false }).decode(buf)
 }
 
-async function fetchHtml(url: string): Promise<FetchOutcome> {
+async function fetchHtml(url: string, fetchImpl: HtmlFetch): Promise<FetchOutcome> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {
-    const res = await fetch(url, {
+    const res = await fetchImpl(url, {
       signal: controller.signal,
       redirect: 'follow',
       headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,*/*' },
@@ -187,11 +201,14 @@ function detectChallenge(html: string, title: string, text: string): string | nu
   return null
 }
 
-export async function performExtraction(rawUrl: string): Promise<SiteExtraction> {
+export async function performExtraction(
+  rawUrl: string,
+  fetchImpl: HtmlFetch = fetch,
+): Promise<SiteExtraction> {
     const baseUrl = normalizeUrl(rawUrl)
-    let outcome = await fetchHtml(baseUrl.href)
+    let outcome = await fetchHtml(baseUrl.href, fetchImpl)
     if (!outcome.ok && baseUrl.protocol === 'https:') {
-      const overHttp = await fetchHtml(`http://${baseUrl.host}${baseUrl.pathname}`)
+      const overHttp = await fetchHtml(`http://${baseUrl.host}${baseUrl.pathname}`, fetchImpl)
       if (overHttp.ok) outcome = overHttp
     }
     if (!outcome.ok) {
@@ -278,7 +295,7 @@ export async function performExtraction(rawUrl: string): Promise<SiteExtraction>
     ].slice(0, MAX_SUBPAGES)
 
     for (const pageUrl of candidates) {
-      const sub = await fetchHtml(pageUrl)
+      const sub = await fetchHtml(pageUrl, fetchImpl)
       if (!sub.ok) continue
       const subHtml = sub.html
       pagesCrawled.push(pageUrl)

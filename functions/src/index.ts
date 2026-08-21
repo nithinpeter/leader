@@ -1,16 +1,15 @@
 import { http } from '@google-cloud/functions-framework'
 import { CloudTasksClient } from '@google-cloud/tasks'
-import { initializeApp } from 'firebase-admin/app'
-import { FieldValue, getFirestore } from 'firebase-admin/firestore'
+import { FieldValue } from 'firebase-admin/firestore'
 import { runCycle, type LeadStore } from '../../packages/core/src/automation/cycle'
 import { notifyOfRun, notifyOfSend } from '../../packages/core/src/automation/notify'
 import { performSend, type SendInput } from '../../packages/core/src/email-core'
 import { performExtraction } from '../../packages/core/src/extract-core'
 import { performGeneration } from '../../packages/core/src/generate-core'
 import type { Lead } from '../../packages/core/src/types'
-
-initializeApp()
-const db = getFirestore()
+import { db } from './firebase'
+// Registers the public contact-page entry point (leader-westringia).
+import './westringia'
 
 /**
  * Firestore as the service account. The app reaches the same collection as the
