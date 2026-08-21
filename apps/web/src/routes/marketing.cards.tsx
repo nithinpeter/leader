@@ -3,19 +3,20 @@ import type { ReactNode } from 'react'
 import '../styles/cards.css'
 
 /**
- * LinkedIn poster cards — one per post in the westringia repo's
- * docs/social/queue. Moved here from westringia (src/pages/social/cards.astro).
+ * LinkedIn poster card templates, in the plate style of westringia.com.
  *
  * This page is a tool, not a page of the app: it renders each card at exactly
  * 1080 × 1350 (LinkedIn portrait), and tools/shoot-cards.mjs screenshots each
- * one. It is deliberately outside the auth gate so the screenshot script can
- * reach it against a local dev server, and it is noindexed. Every number on a
- * card is published on westringia.com with a source beside it. If a number
- * changes on the site, it changes here too.
+ * one into ./card-exports. It is deliberately outside the auth gate so the
+ * screenshot script can reach it against a local dev server, and it is
+ * noindexed. Every number on a card is published on westringia.com with a
+ * source beside it. If a number changes on the site, it changes here too.
  *
- * To draft a card for a new post: copy the closest existing card section,
+ * To make the card for a new post: copy the closest existing card section,
  * give it the next id (`card-13`, …), add its slug to tools/shoot-cards.mjs,
- * and follow the brand rules at /marketing/brand.
+ * shoot, then attach the PNG to the post on /marketing. The brand rules live
+ * at /marketing/brand. The first twelve cards match the posts published from
+ * the old westringia pipeline and stay as worked examples of the style.
  */
 
 const BANNED_WORDS = [

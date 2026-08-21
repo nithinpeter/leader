@@ -16,3 +16,6 @@ serviceAccountKey.json
 # Cloud Function build output and its local install
 functions/dist
 functions/node_modules
+
+# Card PNG exports from tools/shoot-cards.mjs — attached to posts via /marketing, never committed
+card-exports/

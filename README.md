@@ -447,14 +447,15 @@ redeploys every already-deployed function on pushes to `main`.
 ## The marketing pipeline
 
 The pipeline for Westringia Labs marketing material lives here too, under
-**Marketing** in the sidebar: the LinkedIn queue with its review checklist and
-approve → publish flow (`/marketing`), the brand guidelines
+**Marketing** in the sidebar: drafting LinkedIn posts, the review checklist
+and approve → publish flow (`/marketing`), the brand guidelines
 (`/marketing/brand`), and the poster-card templates that
-`tools/shoot-cards.mjs` screenshots (`/marketing/cards`). The collateral
-itself — queue files and card PNGs — stays in the westringia repo under
-`docs/social/`; Leader reads and writes it through the GitHub contents API so
-every approve and publish is a commit there, and git stays the posting log.
-Setup, environment variables and the LinkedIn app walkthrough are in
+`tools/shoot-cards.mjs` screenshots (`/marketing/cards`). Posts and their
+card PNGs live in Firestore (`marketing_posts` / `marketing_cards`) next to
+the leads; only the publish call runs server-side, because it holds the
+LinkedIn organisation token. Posted is final — a published post can never be
+edited or deleted, so the record of what went out stands. Setup, environment
+variables and the LinkedIn app walkthrough are in
 [docs/marketing.md](./docs/marketing.md).
 
 ## The contact page

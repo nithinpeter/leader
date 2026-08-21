@@ -1,64 +1,60 @@
 # The marketing pipeline
 
-Leader carries the pipeline for Westringia Labs marketing material: the
-LinkedIn queue review, the approve/publish flow, the poster-card templates,
-and the brand guidelines. It moved here from the westringia repo, which used
-to run it as a password-protected admin on the Netlify deploy of the
-marketing site.
+Leader carries the pipeline for Westringia Labs marketing material: drafting
+LinkedIn posts, reviewing and approving them, publishing to the company page,
+the poster-card templates, and the brand guidelines.
 
-**The collateral itself did not move.** Queue files stay in the westringia
-repo at `docs/social/queue` (frontmatter: `title`, `image`, `image_alt`,
-`status`; body: the exact post text) with their card PNGs in
-`docs/social/images`. Leader reads and writes them through the GitHub
-contents API, so every approve and publish is still a real commit on the
-westringia deploy branch and git stays the log of what went out and when.
+Posts live in Firestore next to the rest of Leader's data — `marketing_posts`
+for the queue, `marketing_cards/{postId}` for each card PNG (stored as a data
+URL; real cards run well under Firestore's 1 MB document cap). The client
+owns the store the same way it owns leads; the only server function is the
+LinkedIn call itself, because it holds the organisation token. Status moves
+draft → approved → posted, and only ever forward: posted is final, and a
+posted post can never be edited, deleted or published again, so the record
+of what went out can never quietly change.
+
+The collateral posted before the pipeline moved here stays in the westringia
+repo under `docs/social/` as a closed archive; nothing reads it.
 
 ## The pages
 
-- **/marketing** (sidebar → Marketing) — every post in the queue with its
-  card. Open one: the image, the exact text, the alt text and the review
-  checklist. **Approve** unlocks **Publish to LinkedIn**; publish posts it as
-  the organisation and marks the file `status: posted` with the post URN. A
-  posted file can never post again. Status moves draft → approved → posted,
-  and only ever forward. The pages sit behind Leader's normal Google sign-in.
+- **/marketing** (sidebar → Marketing) — the queue. **New post** drafts one
+  (title is internal, the body goes out exactly as written, with a live
+  character count against LinkedIn's 3,000 limit). A draft is editable, can
+  carry a card PNG with alt text, and can be deleted. **Approve** freezes it
+  and unlocks **Publish to LinkedIn**; publish posts it as the organisation
+  and stamps the post with the URN and time. The pages sit behind Leader's
+  normal Google sign-in.
 - **/marketing/brand** — the brand guidelines: palette, type, wordmark rules,
   the nine writing rules, the banned-word list, the card conventions.
 - **/marketing/cards** — the poster-card templates, rendered at exactly
   1080 × 1350 for `tools/shoot-cards.mjs` to screenshot. A tool, not a page
   of the app: noindexed, and outside the auth gate so the screenshot script
-  can reach it on a dev server.
+  can reach it on a dev server. The first twelve cards are the ones published
+  from the old pipeline, kept as worked examples of the style.
+
+## Drafting a post
+
+1. **New post** on /marketing. Write to the rules at /marketing/brand.
+2. If it carries a card: add a card section to
+   `apps/web/src/routes/marketing.cards.tsx` and its slug to
+   `tools/shoot-cards.mjs`, then with `pnpm dev` running, `pnpm shoot:cards`.
+   The PNGs land in `card-exports/` (gitignored — the export is a scratch
+   step, the store is Firestore).
+3. **Attach card** on the post, write the alt text, save.
+4. Review against the checklist, **Approve**, **Publish**.
 
 ## Configuration
 
-Everything reads environment variables (the repo-root `.env` in dev, the
-deploy's env vars in production).
+The publish call reads environment variables (the repo-root `.env` in dev,
+the deploy's env vars in production). Everything else needs only the Firebase
+config the app already has.
 
 | Value | Env var | What it is |
 | --- | --- | --- |
 | LinkedIn token | `LINKEDIN_ACCESS_TOKEN` | From `tools/linkedin-auth.mjs`, run by a page admin. ~60-day life. |
 | Organisation id | `LINKEDIN_ORG_ID` | The number in `linkedin.com/company/<number>/admin/`. |
 | API version | `LINKEDIN_VERSION` | LinkedIn-Version header, default pinned in code (202506). |
-| GitHub token | `MARKETING_GITHUB_TOKEN` | Fine-grained PAT for the westringia repo only, Contents read + write. Falls back to `GITHUB_TOKEN`. |
-| Repo / branch | `MARKETING_GITHUB_REPO`, `MARKETING_GITHUB_BRANCH` | Default `nithinpeter/westringia` / `main`. |
-| Local checkout | `WESTRINGIA_CHECKOUT` | Path to a westringia clone, default `../westringia`. |
-
-Without a GitHub token the store falls back to the local westringia checkout,
-where approves and publishes show up in that repo's `git status` instead of
-as commits — which is what makes local dev work. `MARKETING_STORE=local|github`
-forces the choice if a machine carries an unrelated `GITHUB_TOKEN`.
-
-## Drafting a new post
-
-1. Copy any file in the westringia repo's `docs/social/queue`, keep the
-   frontmatter shape, and write to the rules at `/marketing/brand` (the same
-   rules as westringia.com/how-we-write). `image:` may be omitted for a
-   text-only post.
-2. If it carries a card, add a card section to
-   `apps/web/src/routes/marketing.cards.tsx` and its slug to
-   `tools/shoot-cards.mjs`, then with `pnpm dev` running:
-   `pnpm shoot:cards`. The PNG lands in the westringia checkout's
-   `docs/social/images`; commit and push it there.
-3. Review, approve and publish from `/marketing`.
 
 ## One-time LinkedIn setup, and the honest gate
 
@@ -78,8 +74,7 @@ reviews access applications by hand, so allow days, not minutes.
    ```
 
    It prints the access token and the organisation ids you administer.
-5. **Set the values** in the deploy's environment (plus the GitHub PAT) and
-   redeploy.
+5. **Set the values** in the deploy's environment and redeploy.
 
 When publishing starts failing with a 401 the token has expired: re-run step
 4 and update the value. If the app is enabled for programmatic refresh,
@@ -97,6 +92,6 @@ meant to go out.
 - **No personal-profile posting.** The token is scoped to the organisation.
   Founders posting as themselves post by hand, which is where those posts
   should come from anyway.
-- **No draft images on the public internet.** The cards are delivered to the
-  signed-in review page as data URLs read from the private westringia repo,
-  never served as public files.
+- **No draft images on the public internet.** Cards live in Firestore behind
+  the app's sign-in and are never served as public files. (The templates page
+  is public tooling, but it carries only the composed designs, not the queue.)
