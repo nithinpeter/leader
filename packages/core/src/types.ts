@@ -176,6 +176,39 @@ export interface InboundEmail {
 }
 
 /**
+ * Proof of consent captured on the public contact page. The Spam Act needs us
+ * to be able to say what the visitor agreed to and when, so the exact sentence
+ * is stored, not a boolean.
+ */
+export interface ContactConsent {
+  /** The exact sentence the visitor agreed to. */
+  text: string
+  at: string
+  /** Salted hash of the visitor's network address - never the address itself. */
+  ipHash: string
+}
+
+/**
+ * One submission from the public contact page: either a "read my website"
+ * research request or the enquiry form. Kept as a list on the lead so a
+ * visitor who comes back twice leaves two records, not one overwritten one.
+ */
+export interface ContactRequest {
+  kind: 'research' | 'enquiry'
+  at: string
+  /** The address the visitor typed. Research requests always carry one. */
+  email?: string
+  name?: string
+  /** The form's free-text "email or phone" field, exactly as typed. */
+  reply?: string
+  message?: string
+  business?: string
+  callTimes?: string
+  pickedJob?: string
+  consent: ContactConsent
+}
+
+/**
  * Where a bulk-imported lead sits in the import machinery. Absent once the
  * import finishes cleanly, so hand-added leads and completed imports look
  * identical.
@@ -221,6 +254,14 @@ export interface Lead {
   importState?: ImportState
   /** Why the import failed, written for whoever reads the lead later. */
   importError?: string
+  /**
+   * 'westringia-contact' when the visitor created the lead themselves on the
+   * public contact page. Inbound leads asked to hear from a person, so the
+   * cold-outreach sequence leaves them alone.
+   */
+  source?: string
+  /** What came in from the public contact page, oldest first. */
+  contactRequests?: ContactRequest[]
 }
 
 /**

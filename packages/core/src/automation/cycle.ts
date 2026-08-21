@@ -181,6 +181,9 @@ export async function runCycle(opts: {
       // moved the lead along by hand, so the cold email is not ours to send.
       if (!sentEmails(current).length) {
         if (!['new', 'researched', 'doc_ready'].includes(current.status)) continue
+        // A lead that walked in through the contact page asked to hear from a
+        // person; the cold sequence is not that. A human replies instead.
+        if (current.source === 'westringia-contact') continue
         if (report.coldSent >= maxColdPerRun) continue
 
         let extraction = current.extraction

@@ -278,10 +278,6 @@ export async function applyImportResult(
   })
 }
 
-export async function setLeadStatus(id: string, status: LeadStatus): Promise<void> {
-  await updateLead(id, { status })
-}
-
 export async function deleteLead(id: string): Promise<void> {
   await deleteDoc(doc(firestore(), COLLECTION, id))
 }

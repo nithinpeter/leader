@@ -17,6 +17,7 @@
     "imapflow": "^1.7.1",
     "mailparser": "^3.9.15",
     "nodemailer": "^9.0.5",
+    "undici": "^7.16.0",
     "zod": "^4.4.3"
   }
 }
