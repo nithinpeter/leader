@@ -1,4 +1,4 @@
-import type { SiteExtraction } from './types'
+import { normalizeDomain, type SiteExtraction } from './types'
 
 const FETCH_TIMEOUT_MS = 15_000
 const MAX_SUBPAGES = 3
@@ -292,7 +292,7 @@ export async function performExtraction(rawUrl: string): Promise<SiteExtraction>
       .filter((h) => h.split(' ').length <= 8 && !/contact|home|menu/i.test(h))
       .slice(0, 12)
 
-    const domain = baseUrl.host.replace(/^www\./, '')
+    const domain = normalizeDomain(baseUrl.host)
     const companyName =
       siteName ||
       title.split(/\s*[|–—-]\s*/)[0]?.trim() ||

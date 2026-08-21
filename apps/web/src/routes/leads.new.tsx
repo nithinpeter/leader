@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { AppShell, Protected } from '../components/AppShell'
 import { CheckIcon, GlobeIcon, SparklesIcon } from '../components/icons'
@@ -12,10 +12,12 @@ import {
   CardTitle,
   Input,
   Spinner,
+  buttonClass,
   cn,
 } from '../components/ui'
 import { useAuth } from '../lib/auth'
-import { createLead } from '../lib/leads'
+import { createLead, DuplicateLeadError, findLeadIdByDomain } from '../lib/leads'
+import { normalizeDomain } from '@leader/core/types'
 import { extractSite } from '../server/extract'
 import { generateProposition } from '../server/generate'
 
@@ -46,6 +48,18 @@ const FAILURE_HINT: Record<Failure['phase'], string> = {
   save: 'The research came back fine - writing it to Firestore is what failed. A permission-denied code usually means the rules in firestore.rules were never published to the project; check the Rules tab in the Firebase console.',
 }
 
+/** The hostname of whatever was typed, or nothing if it is not an address yet. */
+function hostOf(raw: string): string | null {
+  const trimmed = raw.trim()
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  try {
+    const parsed = new URL(withScheme)
+    return parsed.hostname.includes('.') ? normalizeDomain(parsed.hostname) : null
+  } catch {
+    return null
+  }
+}
+
 function messageOf(e: unknown): string {
   if (!(e instanceof Error)) return 'Something went wrong'
   // FirebaseError carries the decisive bit in `code` (permission-denied,
@@ -66,12 +80,32 @@ function NewLead() {
   const [url, setUrl] = useState('')
   const [step, setStep] = useState<Step>('idle')
   const [error, setError] = useState<Failure | null>(null)
+  const [duplicate, setDuplicate] = useState<{ domain: string; id: string } | null>(null)
 
   const running = step !== 'idle'
 
   async function run() {
     if (!url.trim() || !user) return
     setError(null)
+    setDuplicate(null)
+
+    // Check what was typed before paying for a crawl and a generation. The
+    // address may still redirect somewhere already in the pipeline, which is
+    // why createLead checks again on the far side.
+    const typed = hostOf(url)
+    if (typed) {
+      try {
+        const existing = await findLeadIdByDomain(typed)
+        if (existing) {
+          setDuplicate({ domain: typed, id: existing })
+          return
+        }
+      } catch (e) {
+        // A failed lookup is not a reason to refuse the lead; createLead runs
+        // the same check again before anything is written.
+        console.error(e)
+      }
+    }
 
     let extraction
     try {
@@ -107,6 +141,14 @@ function NewLead() {
       await navigate({ to: '/leads/$leadId', params: { leadId: id } })
     } catch (e) {
       console.error(e)
+      if (e instanceof DuplicateLeadError) {
+        // The site redirected onto a business already in the pipeline. The
+        // research is discarded rather than saved twice; the existing lead is
+        // the one that gets contacted.
+        setDuplicate({ domain: e.domain, id: e.existingId })
+        setStep('idle')
+        return
+      }
       setError({ phase: 'save', message: messageOf(e) })
       setStep('idle')
     }
@@ -194,6 +236,24 @@ function NewLead() {
               <p className="pl-8 text-xs text-muted-foreground">
                 This usually takes under a minute. Don&rsquo;t close the tab.
               </p>
+            </div>
+          ) : null}
+
+          {duplicate ? (
+            <div className="mt-6">
+              <Alert title={`${duplicate.domain} is already a lead`}>
+                <p className="text-xs">
+                  Nothing was created, so this business will not be contacted
+                  twice. Open the lead to see where it got to.
+                </p>
+                <Link
+                  to="/leads/$leadId"
+                  params={{ leadId: duplicate.id }}
+                  className={cn(buttonClass('outline', 'sm'), 'mt-3')}
+                >
+                  Open the existing lead
+                </Link>
+              </Alert>
             </div>
           ) : null}
 

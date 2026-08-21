@@ -21,9 +21,11 @@ import {
   applyImportResult,
   createQueuedLeads,
   failQueuedLeads,
+  findLeadIdByDomain,
   subscribeToLeads,
+  type QueuedLeads,
 } from '../lib/leads'
-import type { Lead } from '@leader/core/types'
+import { normalizeDomain, type Lead } from '@leader/core/types'
 import { extractSite } from '../server/extract'
 import { generateProposition } from '../server/generate'
 import { IMPORT_NOT_CONFIGURED, startBulkImport } from '../server/import'
@@ -83,7 +85,7 @@ function parseInput(raw: string): { entries: ParsedEntry[]; rejected: string[] }
       rejected.push(line.trim())
       continue
     }
-    const domain = parsed.hostname.replace(/^www\./, '').toLowerCase()
+    const domain = normalizeDomain(parsed.hostname)
     if (seen.has(domain)) continue
     seen.add(domain)
     entries.push({ url: parsed.href, domain })
@@ -130,7 +132,7 @@ function BulkImport() {
 
   const { entries, rejected } = useMemo(() => parseInput(raw), [raw])
   const existingDomains = useMemo(
-    () => new Set((leads ?? []).map((l) => l.domain.toLowerCase())),
+    () => new Set((leads ?? []).map((l) => normalizeDomain(l.domain))),
     [leads],
   )
   const fresh = entries.filter((e) => !existingDomains.has(e.domain))
@@ -179,10 +181,23 @@ function BulkImport() {
           try {
             await applyImportResult(id, { importState: 'running' })
             const extraction = await extractSite({ data: { url: entry.url } })
+            // Same guard the Cloud Function runs: the crawl follows redirects,
+            // and the site it landed on may already be someone's lead.
+            const landed = normalizeDomain(extraction.domain)
+            if (landed !== normalizeDomain(entry.domain)) {
+              const clash = await findLeadIdByDomain(landed)
+              if (clash && clash !== id) {
+                await applyImportResult(id, {
+                  importState: 'failed',
+                  importError: `${entry.domain} redirects to ${landed}, which is already a lead. Nothing was imported, so the business is not contacted twice.`,
+                })
+                continue
+              }
+            }
             await applyImportResult(id, {
               extraction,
               companyName: extraction.companyName,
-              domain: extraction.domain,
+              domain: landed,
               status: 'researched',
             })
             const proposition = await generateProposition({ data: { extraction } })
@@ -208,16 +223,29 @@ function BulkImport() {
     setError(null)
     setNotice(null)
 
-    let ids: string[]
+    let created: QueuedLeads['created']
     try {
       setPhase({ key: 'creating' })
-      ids = await createQueuedLeads(fresh, user.uid)
-      setBatchIds(ids)
+      const result = await createQueuedLeads(fresh, user.uid)
+      created = result.created
+      setBatchIds(created.map((c) => c.id))
+      if (result.skipped.length > 0) {
+        // The list on screen is built from a snapshot; Firestore knew about
+        // leads it had not caught up on, and those are the ones dropped here.
+        setNotice(
+          `${result.skipped.length} more ${result.skipped.length === 1 ? 'business was' : 'businesses were'} already in the pipeline and ${result.skipped.length === 1 ? 'was' : 'were'} skipped: ${result.skipped.map((d) => d.domain).join(', ')}`,
+        )
+      }
+      if (created.length === 0) {
+        setPhase({ key: 'done' })
+        return
+      }
     } catch (e) {
       setError(messageOf(e))
       setPhase({ key: 'idle' })
       return
     }
+    const ids = created.map((c) => c.id)
 
     setPhase({ key: 'dispatching' })
     try {
@@ -249,7 +277,7 @@ function BulkImport() {
       'The bulk import functions are not deployed, so this import is running in the browser. Keep this tab open until it finishes.',
     )
     setPhase({ key: 'local' })
-    const byId = new Map(ids.map((id, i) => [id, fresh[i]]))
+    const byId = new Map(created.map((c) => [c.id, { url: c.url, domain: c.domain }]))
     await processLocally(ids, byId)
   }
 
