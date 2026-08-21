@@ -15,6 +15,9 @@ import { Route as DocLeadIdRouteImport } from './routes/doc.$leadId'
 import { Route as LeadsLeadIdRouteImport } from './routes/leads.$leadId'
 import { Route as LeadsImportRouteImport } from './routes/leads.import'
 import { Route as LeadsNewRouteImport } from './routes/leads.new'
+import { Route as MarketingIndexRouteImport } from './routes/marketing.index'
+import { Route as MarketingBrandRouteImport } from './routes/marketing.brand'
+import { Route as MarketingCardsRouteImport } from './routes/marketing.cards'
 import { Route as PitchLeadIdRouteImport } from './routes/pitch.$leadId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -47,6 +50,21 @@ const LeadsNewRoute = LeadsNewRouteImport.update({
   path: '/leads/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MarketingIndexRoute = MarketingIndexRouteImport.update({
+  id: '/marketing/',
+  path: '/marketing/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketingBrandRoute = MarketingBrandRouteImport.update({
+  id: '/marketing/brand',
+  path: '/marketing/brand',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketingCardsRoute = MarketingCardsRouteImport.update({
+  id: '/marketing/cards',
+  path: '/marketing/cards',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PitchLeadIdRoute = PitchLeadIdRouteImport.update({
   id: '/pitch/$leadId',
   path: '/pitch/$leadId',
@@ -60,7 +78,10 @@ export interface FileRoutesByFullPath {
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/leads/import': typeof LeadsImportRoute
   '/leads/new': typeof LeadsNewRoute
+  '/marketing/brand': typeof MarketingBrandRoute
+  '/marketing/cards': typeof MarketingCardsRoute
   '/pitch/$leadId': typeof PitchLeadIdRoute
+  '/marketing/': typeof MarketingIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -69,7 +90,10 @@ export interface FileRoutesByTo {
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/leads/import': typeof LeadsImportRoute
   '/leads/new': typeof LeadsNewRoute
+  '/marketing/brand': typeof MarketingBrandRoute
+  '/marketing/cards': typeof MarketingCardsRoute
   '/pitch/$leadId': typeof PitchLeadIdRoute
+  '/marketing': typeof MarketingIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -79,7 +103,10 @@ export interface FileRoutesById {
   '/leads/$leadId': typeof LeadsLeadIdRoute
   '/leads/import': typeof LeadsImportRoute
   '/leads/new': typeof LeadsNewRoute
+  '/marketing/brand': typeof MarketingBrandRoute
+  '/marketing/cards': typeof MarketingCardsRoute
   '/pitch/$leadId': typeof PitchLeadIdRoute
+  '/marketing/': typeof MarketingIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -90,7 +117,10 @@ export interface FileRouteTypes {
     | '/leads/$leadId'
     | '/leads/import'
     | '/leads/new'
+    | '/marketing/brand'
+    | '/marketing/cards'
     | '/pitch/$leadId'
+    | '/marketing/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -99,7 +129,10 @@ export interface FileRouteTypes {
     | '/leads/$leadId'
     | '/leads/import'
     | '/leads/new'
+    | '/marketing/brand'
+    | '/marketing/cards'
     | '/pitch/$leadId'
+    | '/marketing'
   id:
     | '__root__'
     | '/'
@@ -108,7 +141,10 @@ export interface FileRouteTypes {
     | '/leads/$leadId'
     | '/leads/import'
     | '/leads/new'
+    | '/marketing/brand'
+    | '/marketing/cards'
     | '/pitch/$leadId'
+    | '/marketing/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -118,7 +154,10 @@ export interface RootRouteChildren {
   LeadsLeadIdRoute: typeof LeadsLeadIdRoute
   LeadsImportRoute: typeof LeadsImportRoute
   LeadsNewRoute: typeof LeadsNewRoute
+  MarketingBrandRoute: typeof MarketingBrandRoute
+  MarketingCardsRoute: typeof MarketingCardsRoute
   PitchLeadIdRoute: typeof PitchLeadIdRoute
+  MarketingIndexRoute: typeof MarketingIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -165,6 +204,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeadsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/marketing/': {
+      id: '/marketing/'
+      path: '/marketing'
+      fullPath: '/marketing/'
+      preLoaderRoute: typeof MarketingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketing/brand': {
+      id: '/marketing/brand'
+      path: '/marketing/brand'
+      fullPath: '/marketing/brand'
+      preLoaderRoute: typeof MarketingBrandRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketing/cards': {
+      id: '/marketing/cards'
+      path: '/marketing/cards'
+      fullPath: '/marketing/cards'
+      preLoaderRoute: typeof MarketingCardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pitch/$leadId': {
       id: '/pitch/$leadId'
       path: '/pitch/$leadId'
@@ -182,7 +242,10 @@ const rootRouteChildren: RootRouteChildren = {
   LeadsLeadIdRoute: LeadsLeadIdRoute,
   LeadsImportRoute: LeadsImportRoute,
   LeadsNewRoute: LeadsNewRoute,
+  MarketingBrandRoute: MarketingBrandRoute,
+  MarketingCardsRoute: MarketingCardsRoute,
   PitchLeadIdRoute: PitchLeadIdRoute,
+  MarketingIndexRoute: MarketingIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

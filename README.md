@@ -444,6 +444,19 @@ CRON_SECRET=$(gcloud secrets versions access latest --secret=leader-cron-secret)
 That's the last manual deploy of the import pair. From here GitHub Actions
 redeploys every already-deployed function on pushes to `main`.
 
+## The marketing pipeline
+
+The pipeline for Westringia Labs marketing material lives here too, under
+**Marketing** in the sidebar: the LinkedIn queue with its review checklist and
+approve → publish flow (`/marketing`), the brand guidelines
+(`/marketing/brand`), and the poster-card templates that
+`tools/shoot-cards.mjs` screenshots (`/marketing/cards`). The collateral
+itself — queue files and card PNGs — stays in the westringia repo under
+`docs/social/`; Leader reads and writes it through the GitHub contents API so
+every approve and publish is a commit there, and git stays the posting log.
+Setup, environment variables and the LinkedIn app walkthrough are in
+[docs/marketing.md](./docs/marketing.md).
+
 ## The contact page
 
 westringia.com/contact runs on this repo too. The page's "show us your

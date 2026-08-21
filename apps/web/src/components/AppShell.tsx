@@ -6,6 +6,7 @@ import {
   ChevronRightIcon,
   LayoutDashboardIcon,
   LogOutIcon,
+  MegaphoneIcon,
   MoonIcon,
   PanelLeftIcon,
   PlusIcon,
@@ -49,6 +50,7 @@ function ThemeToggle() {
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboardIcon, exact: true },
   { to: '/leads/new', label: 'New lead', icon: PlusIcon, exact: false },
+  { to: '/marketing', label: 'Marketing', icon: MegaphoneIcon, exact: false },
 ]
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
