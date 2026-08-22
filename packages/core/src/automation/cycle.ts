@@ -127,8 +127,11 @@ export async function runCycle(opts: {
   store: LeadStore
   /** Injected so a dry run can draft everything without emailing a prospect. */
   send: (input: SendInput) => Promise<{ messageId: string; from: string }>
-  /** Called after every automated send, before the next lead is handled. */
-  notify: (action: CycleAction, email: { subject: string; body: string }) => Promise<void>
+  /**
+   * Called when a person writes back, with what they sent. Replies are the
+   * only thing worth an email; everything else the run does stays quiet.
+   */
+  notify: (lead: Lead, reply: InboundEmail) => Promise<void>
   /**
    * The day's marketing allowance. A dry run passes a throwaway one so the
    * cycle behaves exactly as it would with sending on without spending the
@@ -318,6 +321,11 @@ export async function runCycle(opts: {
         current = { ...lead, ...patch }
         report.inboundRecorded += fresh.length
 
+        // A person wrote back. This is the one thing that emails the owner.
+        for (const reply of fresh) {
+          if (reply.kind === 'reply') await notify(current, reply)
+        }
+
         if (optOut || bounce) {
           report.stopped++
           report.actions.push({
@@ -402,15 +410,13 @@ export async function runCycle(opts: {
         })
         report.coldSent++
         await recordMarketingSend()
-        const action: CycleAction = {
+        report.actions.push({
           leadId: current.id,
           company: current.companyName,
           to: coldTo,
           kind: 'cold',
           detail: 'First email',
-        }
-        report.actions.push(action)
-        await notify(action, { subject: draft.subject, body: draft.body })
+        })
         continue
       }
 
@@ -451,15 +457,13 @@ export async function runCycle(opts: {
           lastAutomatedAt: now.toISOString(),
         })
         report.repliesSent++
-        const action: CycleAction = {
+        report.actions.push({
           leadId: current.id,
           company: current.companyName,
           to: answering.from,
           kind: 'reply',
           detail: `Answered "${answering.subject}"`,
-        }
-        report.actions.push(action)
-        await notify(action, { subject: draft.subject, body })
+        })
         continue
       }
 
@@ -507,15 +511,13 @@ export async function runCycle(opts: {
       })
       report.followUpsSent++
       await recordMarketingSend()
-      const action: CycleAction = {
+      report.actions.push({
         leadId: current.id,
         company: current.companyName,
         to,
         kind: 'follow_up',
         detail: `Follow-up ${step} of ${MAX_FOLLOW_UPS}`,
-      }
-      report.actions.push(action)
-      await notify(action, { subject: draft.subject, body })
+      })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       report.errors.push(`${lead.companyName}: ${message}`)

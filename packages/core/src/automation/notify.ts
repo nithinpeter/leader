@@ -1,7 +1,7 @@
 import { performSend } from '../email-core'
-import type { CycleAction, CycleReport } from './cycle'
+import type { InboundEmail, Lead } from '../types'
 
-/** Where the "we just sent this" emails go. Defaults to the outreach mailbox. */
+/** Where the "someone replied" emails go. Defaults to the outreach mailbox. */
 function notifyAddress(): string | null {
   return process.env.NOTIFY_EMAIL || process.env.SMTP_USER || null
 }
@@ -12,91 +12,29 @@ function appUrl(leadId: string): string {
 }
 
 /**
- * Tells a person what just went out in their name, immediately, with the full
- * text. If the automation writes something wrong, this is how it gets caught
- * while there is still time to send a correction.
+ * Tells a person that a prospect wrote back, with what they said. This is the
+ * only email the automation sends about itself: routine sends, follow-ups and
+ * run summaries stay quiet, and the app is where to see those.
  */
-export async function notifyOfSend(
-  action: CycleAction,
-  email: { subject: string; body: string },
+export async function notifyOfReply(
+  lead: Lead,
+  reply: InboundEmail,
 ): Promise<void> {
   const to = notifyAddress()
   if (!to) return
 
-  const what =
-    action.kind === 'cold'
-      ? `First email to ${action.company}`
-      : action.kind === 'reply'
-        ? `Replied to ${action.company}`
-        : `${action.detail} to ${action.company}`
-
   await performSend({
     to,
-    subject: `[Leader] ${what}`,
+    subject: `[Leader] ${lead.companyName} replied`,
     body: [
-      `${what}.`,
+      `${reply.fromName || reply.from} at ${lead.companyName} wrote back.`,
       '',
-      `Sent to: ${action.to}`,
-      `Why: ${action.detail}`,
-      `Lead: ${appUrl(action.leadId)}`,
+      `Subject: ${reply.subject}`,
+      `Lead: ${appUrl(lead.id)}`,
       '',
-      'This went out automatically. Nobody read it first.',
-      '',
-      `Subject: ${email.subject}`,
-      '',
-      email.body,
+      reply.snippet,
     ].join('\n'),
     // No BCC: this is already going to our own mailbox. No footer either.
-    noCopy: true,
-    plain: true,
-  })
-}
-
-/** A single summary after a run that did something. Quiet runs stay quiet. */
-export async function notifyOfRun(report: CycleReport): Promise<void> {
-  const to = notifyAddress()
-  if (!to) return
-  const acted =
-    report.coldSent +
-    report.repliesSent +
-    report.followUpsSent +
-    report.stopped +
-    report.removed +
-    report.unverified
-  if (acted === 0 && report.errors.length === 0) return
-
-  await performSend({
-    to,
-    subject: `[Leader] ${report.coldSent} contacted, ${report.repliesSent} replied, ${report.followUpsSent} followed up`,
-    body: [
-      `Run at ${report.ranAt}.`,
-      '',
-      `Leads considered: ${report.leadsConsidered}`,
-      `New messages recorded: ${report.inboundRecorded}`,
-      `First emails sent: ${report.coldSent}`,
-      `Replies sent: ${report.repliesSent}`,
-      `Follow-ups sent: ${report.followUpsSent}`,
-      `Stopped (bounced or asked us to stop): ${report.stopped}`,
-      ...(report.removed
-        ? [`Leads removed after a failed send: ${report.removed}`]
-        : []),
-      '',
-      // The two numbers that explain a quiet run, so it never reads as "the
-      // cron is broken" when it is actually working exactly as intended.
-      `Marketing sent today: ${report.sentToday} of ${report.dailyCap}`,
-      ...(report.heldByCap
-        ? [`Waiting on tomorrow's allowance: ${report.heldByCap}`]
-        : []),
-      ...(report.unverified
-        ? [`Addresses rejected before sending: ${report.unverified}`]
-        : []),
-      ...(report.checksUnavailable
-        ? [`Address checks that could not complete: ${report.checksUnavailable}`]
-        : []),
-      '',
-      ...report.actions.map((a) => `${a.company}: ${a.detail} (${a.to})`),
-      ...(report.errors.length ? ['', 'Errors:', ...report.errors] : []),
-    ].join('\n'),
     noCopy: true,
     plain: true,
   })
