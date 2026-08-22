@@ -27,7 +27,7 @@ import {
 export interface LeadStore {
   list(): Promise<Lead[]>
   update(id: string, patch: Partial<Lead>): Promise<void>
-  /** Deletes the lead outright. Used when a send attempt to them errors. */
+  /** Deletes the lead outright. Used when a second send attempt to them errors. */
   remove(id: string): Promise<void>
 }
 
@@ -47,7 +47,7 @@ export interface CycleReport {
   repliesSent: number
   followUpsSent: number
   stopped: number
-  /** Leads deleted because the attempt to email them errored. */
+  /** Leads deleted because emailing them errored a second time. */
   removed: number
   /** Addresses the pre-send check rejected outright. Nothing was sent to them. */
   unverified: number
@@ -120,8 +120,10 @@ function unansweredReplies(lead: Lead): InboundEmail[] {
  * check, and the day's allowance has to have room left in it. Replies pass
  * both, because a person waiting on an answer is not marketing.
  *
- * A contact attempt that errors deletes the lead. Errors before any send, in
- * research, drafting or the address check, leave the lead for the next run.
+ * A contact attempt that errors is held against the lead; a second one
+ * deletes it, and a send that goes through clears the slate. Errors before
+ * any send, in research, drafting or the address check, leave the lead for
+ * the next run.
  */
 export async function runCycle(opts: {
   store: LeadStore
@@ -279,8 +281,9 @@ export async function runCycle(opts: {
   for (const lead of leads) {
     // The address of a send that has been attempted and has not come back
     // clean. An error while this is set means the contact attempt itself
-    // failed, and that removes the lead: retrying the same dead address
-    // every half hour would never go anywhere.
+    // failed: the first time the lead waits for another go, the second time
+    // it is removed, because an address that errors run after run is not
+    // coming good.
     let attemptedTo: string | null = null
     const attempt: typeof send = async (input) => {
       attemptedTo = input.to
@@ -407,6 +410,8 @@ export async function runCycle(opts: {
           emails: [...(current.emails ?? []), record],
           status: 'contacted',
           lastAutomatedAt: now.toISOString(),
+          // A send that went through forgives an earlier failed attempt.
+          ...(current.failedSends ? { failedSends: 0 } : {}),
         })
         report.coldSent++
         await recordMarketingSend()
@@ -455,6 +460,7 @@ export async function runCycle(opts: {
         await store.update(current.id, {
           emails: [...(current.emails ?? []), record],
           lastAutomatedAt: now.toISOString(),
+          ...(current.failedSends ? { failedSends: 0 } : {}),
         })
         report.repliesSent++
         report.actions.push({
@@ -508,6 +514,7 @@ export async function runCycle(opts: {
       await store.update(current.id, {
         emails: [...(current.emails ?? []), record],
         lastAutomatedAt: now.toISOString(),
+        ...(current.failedSends ? { failedSends: 0 } : {}),
       })
       report.followUpsSent++
       await recordMarketingSend()
@@ -522,23 +529,29 @@ export async function runCycle(opts: {
       const message = e instanceof Error ? e.message : String(e)
       report.errors.push(`${lead.companyName}: ${message}`)
 
-      // The contact attempt itself errored, so the lead goes. Errors before
-      // any send (research, drafting, the address check) leave the lead in
-      // place for the next run.
+      // The contact attempt itself errored. The first failure is written to
+      // the lead and the next run tries again; the second deletes it. Errors
+      // before any send (research, drafting, the address check) leave the
+      // lead untouched.
       if (attemptedTo) {
         try {
-          await store.remove(lead.id)
-          report.removed++
-          report.actions.push({
-            leadId: lead.id,
-            company: lead.companyName,
-            to: attemptedTo,
-            kind: 'removed',
-            detail: `Removed: emailing them failed (${message})`,
-          })
+          const failures = (lead.failedSends ?? 0) + 1
+          if (failures >= 2) {
+            await store.remove(lead.id)
+            report.removed++
+            report.actions.push({
+              leadId: lead.id,
+              company: lead.companyName,
+              to: attemptedTo,
+              kind: 'removed',
+              detail: `Removed: emailing them failed twice (${message})`,
+            })
+          } else {
+            await store.update(lead.id, { failedSends: failures })
+          }
         } catch (removeError) {
           report.errors.push(
-            `${lead.companyName}: could not remove the lead after the failed send: ${
+            `${lead.companyName}: could not record the failed send: ${
               removeError instanceof Error ? removeError.message : String(removeError)
             }`,
           )
