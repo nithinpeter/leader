@@ -61,6 +61,7 @@ export async function notifyOfRun(report: CycleReport): Promise<void> {
     report.repliesSent +
     report.followUpsSent +
     report.stopped +
+    report.removed +
     report.unverified
   if (acted === 0 && report.errors.length === 0) return
 
@@ -76,6 +77,9 @@ export async function notifyOfRun(report: CycleReport): Promise<void> {
       `Replies sent: ${report.repliesSent}`,
       `Follow-ups sent: ${report.followUpsSent}`,
       `Stopped (bounced or asked us to stop): ${report.stopped}`,
+      ...(report.removed
+        ? [`Leads removed after a failed send: ${report.removed}`]
+        : []),
       '',
       // The two numbers that explain a quiet run, so it never reads as "the
       // cron is broken" when it is actually working exactly as intended.

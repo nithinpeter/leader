@@ -34,6 +34,9 @@ const store: LeadStore = {
       .doc(id)
       .set({ ...patch, updatedAt: new Date().toISOString() }, { merge: true })
   },
+  async remove(id) {
+    await db.collection('leads').doc(id).delete()
+  },
 }
 
 /**
