@@ -269,6 +269,12 @@ export interface Lead {
    */
   emailCheck?: EmailCheck
   /**
+   * Contact attempts that errored mid-send. The first failure waits for the
+   * next run to try again; the second deletes the lead. A send that goes
+   * through clears the count.
+   */
+  failedSends?: number
+  /**
    * They asked us to stop, or the address is dead. Nothing may email this lead
    * again, by hand or on the cron.
    */

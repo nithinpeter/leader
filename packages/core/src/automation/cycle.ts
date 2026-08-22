@@ -27,13 +27,15 @@ import {
 export interface LeadStore {
   list(): Promise<Lead[]>
   update(id: string, patch: Partial<Lead>): Promise<void>
+  /** Deletes the lead outright. Used when a second send attempt to them errors. */
+  remove(id: string): Promise<void>
 }
 
 export interface CycleAction {
   leadId: string
   company: string
   to: string
-  kind: 'cold' | 'reply' | 'follow_up' | 'stopped' | 'unverified'
+  kind: 'cold' | 'reply' | 'follow_up' | 'stopped' | 'unverified' | 'removed'
   detail: string
 }
 
@@ -45,6 +47,8 @@ export interface CycleReport {
   repliesSent: number
   followUpsSent: number
   stopped: number
+  /** Leads deleted because emailing them errored a second time. */
+  removed: number
   /** Addresses the pre-send check rejected outright. Nothing was sent to them. */
   unverified: number
   /** Checks that could not complete, usually DNS. Those leads wait for the next run. */
@@ -115,13 +119,21 @@ function unansweredReplies(lead: Lead): InboundEmail[] {
  * Two things gate every marketing email: the address has to survive a pre-send
  * check, and the day's allowance has to have room left in it. Replies pass
  * both, because a person waiting on an answer is not marketing.
+ *
+ * A contact attempt that errors is held against the lead; a second one
+ * deletes it, and a send that goes through clears the slate. Errors before
+ * any send, in research, drafting or the address check, leave the lead for
+ * the next run.
  */
 export async function runCycle(opts: {
   store: LeadStore
   /** Injected so a dry run can draft everything without emailing a prospect. */
   send: (input: SendInput) => Promise<{ messageId: string; from: string }>
-  /** Called after every automated send, before the next lead is handled. */
-  notify: (action: CycleAction, email: { subject: string; body: string }) => Promise<void>
+  /**
+   * Called when a person writes back, with what they sent. Replies are the
+   * only thing worth an email; everything else the run does stays quiet.
+   */
+  notify: (lead: Lead, reply: InboundEmail) => Promise<void>
   /**
    * The day's marketing allowance. A dry run passes a throwaway one so the
    * cycle behaves exactly as it would with sending on without spending the
@@ -147,6 +159,7 @@ export async function runCycle(opts: {
     repliesSent: 0,
     followUpsSent: 0,
     stopped: 0,
+    removed: 0,
     unverified: 0,
     checksUnavailable: 0,
     dailyCap: 0,
@@ -266,6 +279,18 @@ export async function runCycle(opts: {
 
   // 2. Record it, then decide what each lead needs.
   for (const lead of leads) {
+    // The address of a send that has been attempted and has not come back
+    // clean. An error while this is set means the contact attempt itself
+    // failed: the first time the lead waits for another go, the second time
+    // it is removed, because an address that errors run after run is not
+    // coming good.
+    let attemptedTo: string | null = null
+    const attempt: typeof send = async (input) => {
+      attemptedTo = input.to
+      const result = await send(input)
+      attemptedTo = null
+      return result
+    }
     try {
       const incoming = byLead.get(lead.id) ?? []
       const known = new Set((lead.replies ?? []).map((r) => r.messageId))
@@ -298,6 +323,11 @@ export async function runCycle(opts: {
         await store.update(lead.id, patch)
         current = { ...lead, ...patch }
         report.inboundRecorded += fresh.length
+
+        // A person wrote back. This is the one thing that emails the owner.
+        for (const reply of fresh) {
+          if (reply.kind === 'reply') await notify(current, reply)
+        }
 
         if (optOut || bounce) {
           report.stopped++
@@ -358,7 +388,7 @@ export async function runCycle(opts: {
         if (!draft || !coldTo) continue
         if (!(await addressUsable(current, coldTo))) continue
 
-        const result = await send({
+        const result = await attempt({
           to: coldTo,
           subject: draft.subject,
           body: draft.body,
@@ -380,18 +410,18 @@ export async function runCycle(opts: {
           emails: [...(current.emails ?? []), record],
           status: 'contacted',
           lastAutomatedAt: now.toISOString(),
+          // A send that went through forgives an earlier failed attempt.
+          ...(current.failedSends ? { failedSends: 0 } : {}),
         })
         report.coldSent++
         await recordMarketingSend()
-        const action: CycleAction = {
+        report.actions.push({
           leadId: current.id,
           company: current.companyName,
           to: coldTo,
           kind: 'cold',
           detail: 'First email',
-        }
-        report.actions.push(action)
-        await notify(action, { subject: draft.subject, body: draft.body })
+        })
         continue
       }
 
@@ -410,7 +440,7 @@ export async function runCycle(opts: {
         const draft = await draftReply(current, answering)
         // The branded footer goes on at send time; the record keeps the draft.
         const body = draft.body
-        const result = await send({
+        const result = await attempt({
           to: answering.from,
           subject: draft.subject,
           body,
@@ -430,17 +460,16 @@ export async function runCycle(opts: {
         await store.update(current.id, {
           emails: [...(current.emails ?? []), record],
           lastAutomatedAt: now.toISOString(),
+          ...(current.failedSends ? { failedSends: 0 } : {}),
         })
         report.repliesSent++
-        const action: CycleAction = {
+        report.actions.push({
           leadId: current.id,
           company: current.companyName,
           to: answering.from,
           kind: 'reply',
           detail: `Answered "${answering.subject}"`,
-        }
-        report.actions.push(action)
-        await notify(action, { subject: draft.subject, body })
+        })
         continue
       }
 
@@ -465,7 +494,7 @@ export async function runCycle(opts: {
       const draft = await draftFollowUp(current, step)
       const body = draft.body
       const first = sentEmails(current)[0]
-      const result = await send({
+      const result = await attempt({
         to,
         subject: draft.subject,
         body,
@@ -485,22 +514,49 @@ export async function runCycle(opts: {
       await store.update(current.id, {
         emails: [...(current.emails ?? []), record],
         lastAutomatedAt: now.toISOString(),
+        ...(current.failedSends ? { failedSends: 0 } : {}),
       })
       report.followUpsSent++
       await recordMarketingSend()
-      const action: CycleAction = {
+      report.actions.push({
         leadId: current.id,
         company: current.companyName,
         to,
         kind: 'follow_up',
         detail: `Follow-up ${step} of ${MAX_FOLLOW_UPS}`,
-      }
-      report.actions.push(action)
-      await notify(action, { subject: draft.subject, body })
+      })
     } catch (e) {
-      report.errors.push(
-        `${lead.companyName}: ${e instanceof Error ? e.message : String(e)}`,
-      )
+      const message = e instanceof Error ? e.message : String(e)
+      report.errors.push(`${lead.companyName}: ${message}`)
+
+      // The contact attempt itself errored. The first failure is written to
+      // the lead and the next run tries again; the second deletes it. Errors
+      // before any send (research, drafting, the address check) leave the
+      // lead untouched.
+      if (attemptedTo) {
+        try {
+          const failures = (lead.failedSends ?? 0) + 1
+          if (failures >= 2) {
+            await store.remove(lead.id)
+            report.removed++
+            report.actions.push({
+              leadId: lead.id,
+              company: lead.companyName,
+              to: attemptedTo,
+              kind: 'removed',
+              detail: `Removed: emailing them failed twice (${message})`,
+            })
+          } else {
+            await store.update(lead.id, { failedSends: failures })
+          }
+        } catch (removeError) {
+          report.errors.push(
+            `${lead.companyName}: could not record the failed send: ${
+              removeError instanceof Error ? removeError.message : String(removeError)
+            }`,
+          )
+        }
+      }
     }
   }
 
