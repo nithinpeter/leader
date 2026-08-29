@@ -183,7 +183,8 @@ export async function performReplyCheck(sent: SentRef[]): Promise<{
         const parsed = await simpleParser(message.source)
         const from = parsed.from?.value[0]?.address?.toLowerCase() ?? ''
 
-        // We BCC ourselves for a Sent copy. That copy is not a reply.
+        // Mail from our own address - notifications to ourselves, or the BCC
+        // Sent copies older sends left behind - is not a reply.
         if (!from || from === ourAddress) continue
 
         const referenced = allReferencedIds(parsed.headers as Map<string, unknown>)

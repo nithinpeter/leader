@@ -34,8 +34,7 @@ export async function notifyOfReply(
       '',
       reply.snippet,
     ].join('\n'),
-    // No BCC: this is already going to our own mailbox. No footer either.
-    noCopy: true,
+    // No footer: this goes to our own mailbox, not a prospect.
     plain: true,
   })
 }
