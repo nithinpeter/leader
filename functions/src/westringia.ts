@@ -249,7 +249,6 @@ async function notify(subject: string, lines: string[]): Promise<void> {
       to,
       subject,
       body: lines.join('\n'),
-      noCopy: true,
       plain: true,
     })
   } catch (e) {

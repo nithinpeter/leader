@@ -83,16 +83,17 @@ read-only, so nothing is marked as read.
 Inbound is sorted into four kinds, because they mean opposite things: a
 **reply** moves the lead to *in conversation*, an **auto reply** means nobody
 has read it yet, a **bounce** means the address is dead, and an **opt-out**
-means stop. Your own BCC copy is filtered out, or every send would look like an
-instant reply.
+means stop. Mail from your own address (the reply notifications) is filtered
+out, or it would look like inbound.
 
 ## The automation
 
 A Cloud Function runs the whole loop every 30 minutes: read the mailbox, record
 what came back, answer anyone who wrote to us, make first contact with any lead
 never emailed, and move the follow-up sequence along for anyone who has gone
-quiet. Every automated send emails you a copy immediately, with the full text
-and why it went.
+quiet. The only email the automation sends about itself is when a prospect
+writes back; everything else it does is on the lead page, and in the run
+report it logs.
 
 **First contact** is what makes a lead finder useful: drop a lead in with
 nothing but a URL and the next run researches the site, generates the docs and
@@ -698,8 +699,9 @@ Set `GEMINI_MODEL` to override, and check the id is still live if generation sta
 Outgoing mail uses [Spacemail's SMTP](https://www.spaceship.com/knowledgebase/connect-spacemail-to-email-client/):
 host `mail.spacemail.com`, port `465` (SSL). Port `587` (STARTTLS) also works
 on restricted networks. Set `SMTP_USER` to the full mailbox address
-([hello@westringia.com](mailto:hello@westringia.com)) and `SMTP_PASS` to its password. Every send BCCs the
-mailbox itself, since SMTP sends don't land in the Sent folder.
+([hello@westringia.com](mailto:hello@westringia.com)) and `SMTP_PASS` to its password. SMTP sends don't
+land in the Sent folder and nothing is copied to the inbox either; the record
+of everything sent to a prospect is on the lead itself.
 
 Two things to keep in mind for cold outreach from your primary domain. Volume
 is handled for you: [the daily allowance](#how-much-goes-out-in-a-day) starts

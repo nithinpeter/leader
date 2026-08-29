@@ -24,8 +24,6 @@ export interface SendInput {
   body: string
   /** Message-ID being answered, so their client threads it. */
   inReplyTo?: string | null
-  /** Skip the BCC copy, used for notifications to ourselves. */
-  noCopy?: boolean
   /**
    * Send the body as-is, with no branded footer and no HTML part. For
    * notifications to ourselves; anything going to a prospect leaves this off.
@@ -80,8 +78,6 @@ export async function performSend(
     info = await transporter.sendMail({
       from: { name: config.fromName, address: config.auth.user },
       to: input.to,
-      // Spacemail's SMTP does not copy to the Sent folder; keep a copy in the inbox.
-      ...(input.noCopy ? {} : { bcc: config.auth.user }),
       subject: input.subject,
       ...content,
       ...threading,

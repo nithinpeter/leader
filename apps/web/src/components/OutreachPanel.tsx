@@ -198,8 +198,8 @@ export function OutreachPanel({ lead }: { lead: Lead }) {
       {justSent ? (
         <div className="mb-4">
           <Alert tone="success">
-            Sent. A copy went to the {fromAddress ?? 'sending'} inbox, and the
-            lead is marked contacted.
+            Sent from {fromAddress ?? 'the sending mailbox'}, and the lead is
+            marked contacted. The email is recorded below.
           </Alert>
         </div>
       ) : null}
