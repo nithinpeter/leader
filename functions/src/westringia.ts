@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { http, type Request, type Response } from '@google-cloud/functions-framework'
 import { FieldValue } from 'firebase-admin/firestore'
 import { z } from 'zod'
-import { performSend } from '../../packages/core/src/email-core'
 import { performExtraction } from '../../packages/core/src/extract-core'
 import { performGeneration } from '../../packages/core/src/generate-core'
 import {
@@ -25,7 +24,8 @@ import { guardedFetch, parsePublicUrl } from './safe-fetch'
  *                site runs the normal extraction + generation pipeline. Either
  *                way the visit lands on a lead in the `leads` collection.
  *   /enquiry   - the contact form. Appends to the lead the research created
- *                (or finds/creates one) and emails whoever reads the inbox.
+ *                (or finds/creates one) and moves it to in_conversation, which
+ *                is where the app surfaces it. Nothing here emails anyone.
  *
  * Everything a visitor controls is treated as hostile: URLs fetch through the
  * SSRF guard, all strings echoed back are stripped and capped, and the raw
@@ -227,35 +227,6 @@ async function findLeadByDomain(domain: string): Promise<FoundLead | null> {
   )
 }
 
-function appUrl(leadId: string): string {
-  const base = (process.env.APP_URL || '').replace(/\/$/, '')
-  return base ? `${base}/leads/${leadId}` : `lead ${leadId}`
-}
-
-/**
- * Tells a person a lead just walked in. Best-effort on purpose: the lead is
- * already stored, and a mail hiccup must not turn a stored enquiry into an
- * error page. The body is visitor-written text - fine in a plain-text email,
- * but escape it before any richer format.
- */
-async function notify(subject: string, lines: string[]): Promise<void> {
-  const to = process.env.NOTIFY_EMAIL || process.env.SMTP_USER
-  if (!to) {
-    console.warn('Contact-page activity stored with no notification path configured')
-    return
-  }
-  try {
-    await performSend({
-      to,
-      subject,
-      body: lines.join('\n'),
-      plain: true,
-    })
-  } catch (e) {
-    console.error('Contact-page notification failed:', e)
-  }
-}
-
 // ---------------------------------------------------------------------------
 
 async function research(req: Request, res: Response): Promise<void> {
@@ -380,14 +351,11 @@ async function research(req: Request, res: Response): Promise<void> {
     leadId = ref.id
   }
 
-  await notify(`[Leader] Contact page: first look for ${domain}`, [
-    `${email} asked for a first look at ${domain} and agreed to be emailed.`,
-    reused
-      ? 'Answered from research already on the lead.'
-      : 'Fresh research ran for it.',
-    '',
-    `Lead: ${appUrl(leadId)}`,
-  ])
+  console.log(
+    `Contact page: ${email} asked for a first look at ${domain} (lead ${leadId}, ${
+      reused ? 'answered from stored research' : 'fresh research'
+    })`,
+  )
 
   res.json({
     leadId,
@@ -531,19 +499,9 @@ async function enquiry(req: Request, res: Response): Promise<void> {
     leadId = ref.id
   }
 
-  // The same-day-reply promise needs a human to actually see the message.
-  await notify(`[Leader] Enquiry from ${body.name}`, [
-    body.slow,
-    '',
-    `Name: ${body.name}`,
-    `Reach them on: ${body.reply}`,
-    ...(body.business ? [`Business: ${body.business}`] : []),
-    ...(body.website ? [`Website: ${body.website}`] : []),
-    ...(body.callTimes ? [`Good times to ring: ${body.callTimes}`] : []),
-    ...(body.pickedJob ? [`Picked from the first look: ${body.pickedJob}`] : []),
-    '',
-    `Lead: ${appUrl(leadId)}`,
-  ])
+  // The same-day-reply promise is kept from the app: the lead now sits at
+  // in_conversation with the message on it.
+  console.log(`Contact page: enquiry from ${body.name} stored on lead ${leadId}`)
 
   if (isFormPost) return void sent()
   res.json({ ok: true })

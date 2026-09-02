@@ -114,7 +114,9 @@ function unansweredReplies(lead: Lead): InboundEmail[] {
  * email, writing the same shapes the app writes so the lead page shows it all.
  *
  * Never emails a lead marked doNotContact, never answers anything that is not a
- * person writing back, and sends at most one email per lead per run.
+ * person writing back, and sends at most one email per lead per run. Nothing
+ * here emails the owner: a reply moves the lead to in_conversation, and the
+ * app is where to see that.
  *
  * Two things gate every marketing email: the address has to survive a pre-send
  * check, and the day's allowance has to have room left in it. Replies pass
@@ -130,11 +132,6 @@ export async function runCycle(opts: {
   /** Injected so a dry run can draft everything without emailing a prospect. */
   send: (input: SendInput) => Promise<{ messageId: string; from: string }>
   /**
-   * Called when a person writes back, with what they sent. Replies are the
-   * only thing worth an email; everything else the run does stays quiet.
-   */
-  notify: (lead: Lead, reply: InboundEmail) => Promise<void>
-  /**
    * The day's marketing allowance. A dry run passes a throwaway one so the
    * cycle behaves exactly as it would with sending on without spending the
    * real budget. Omitted entirely, the allowance is not enforced across runs.
@@ -146,7 +143,7 @@ export async function runCycle(opts: {
   maxColdPerRun?: number
   now?: Date
 }): Promise<CycleReport> {
-  const { store, send, notify } = opts
+  const { store, send } = opts
   const maxColdPerRun = opts.maxColdPerRun ?? DEFAULT_COLD_PER_RUN
   const verify = opts.verify ?? verifyEmailAddress
   const ledger = opts.ledger ?? inMemoryLedger()
@@ -197,9 +194,9 @@ export async function runCycle(opts: {
    * must not forget what it already sent.
    *
    * A failed write must not throw: the email is already gone, and letting this
-   * bubble up would skip the notification that tells a person what went out in
-   * their name. The in-memory count still holds for the rest of the run, so
-   * the worst case is that a later run repeats today's allowance.
+   * bubble up would skip recording it against the lead. The in-memory count
+   * still holds for the rest of the run, so the worst case is that a later
+   * run repeats today's allowance.
    */
   async function recordMarketingSend(): Promise<void> {
     warmup = { ...warmup, sentToday: warmup.sentToday + 1, updatedAt: now.toISOString() }
@@ -323,11 +320,6 @@ export async function runCycle(opts: {
         await store.update(lead.id, patch)
         current = { ...lead, ...patch }
         report.inboundRecorded += fresh.length
-
-        // A person wrote back. This is the one thing that emails the owner.
-        for (const reply of fresh) {
-          if (reply.kind === 'reply') await notify(current, reply)
-        }
 
         if (optOut || bounce) {
           report.stopped++

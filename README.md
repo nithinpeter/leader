@@ -83,17 +83,16 @@ read-only, so nothing is marked as read.
 Inbound is sorted into four kinds, because they mean opposite things: a
 **reply** moves the lead to *in conversation*, an **auto reply** means nobody
 has read it yet, a **bounce** means the address is dead, and an **opt-out**
-means stop. Mail from your own address (the reply notifications) is filtered
-out, or it would look like inbound.
+means stop. Mail from your own address is filtered out, or it would look like
+inbound.
 
 ## The automation
 
 A Cloud Function runs the whole loop every 30 minutes: read the mailbox, record
 what came back, answer anyone who wrote to us, make first contact with any lead
 never emailed, and move the follow-up sequence along for anyone who has gone
-quiet. The only email the automation sends about itself is when a prospect
-writes back; everything else it does is on the lead page, and in the run
-report it logs.
+quiet. It never emails you about any of it: a reply moves the lead to *in
+conversation* in the app, and the run report it logs has the rest.
 
 **First contact** is what makes a lead finder useful: drop a lead in with
 nothing but a URL and the next run researches the site, generates the docs and
@@ -293,7 +292,7 @@ gcloud functions deploy leader-outreach \
   --source=functions --entry-point=runOutreach \
   --trigger-http --no-allow-unauthenticated \
   --service-account="$SA" --timeout=900s --memory=512Mi \
-  --set-env-vars=SMTP_USER=hello@westringia.com,NOTIFY_EMAIL=you@westringia.com,APP_URL=https://your-app-url,GEMINI_MODEL=gemini-3.1-pro-preview,AUTOMATION_ENABLED=false \
+  --set-env-vars=SMTP_USER=hello@westringia.com,GEMINI_MODEL=gemini-3.1-pro-preview,AUTOMATION_ENABLED=false \
   --set-secrets=SMTP_PASS=leader-smtp-pass:latest,GOOGLE_GENERATIVE_AI_API_KEY=leader-gemini-key:latest,CRON_SECRET=leader-cron-secret:latest
 ```
 
@@ -624,8 +623,8 @@ writes into the same `leads` collection. Two POST routes:
   response is a public-safe subset (summary, use cases, tech signals) - never
   the cold email draft.
 - **`/enquiry`** - the contact form. Appends to the lead the research created
-  (matched by id, falling back to domain), moves it to *in conversation*, and
-  emails `NOTIFY_EMAIL` so the same-day-reply promise has a human behind it.
+  (matched by id, falling back to domain) and moves it to *in conversation*,
+  which is where the same-day-reply promise gets kept - from the app.
   Works as JSON and as a no-JS urlencoded post (303 back to the static site).
 
 Leads with `source: 'westringia-contact'` are never cold-emailed by the
@@ -648,7 +647,7 @@ gcloud functions deploy leader-westringia \
   --source=functions --entry-point=westringia \
   --trigger-http --allow-unauthenticated \
   --service-account="$SA" --timeout=300s --memory=512Mi \
-  --set-env-vars=SMTP_USER=hello@westringia.com,NOTIFY_EMAIL=you@westringia.com,APP_URL=https://your-app-url,GEMINI_MODEL=gemini-3.1-pro-preview,CONTACT_DAILY_RESEARCH_CAP=300 \
+  --set-env-vars=SMTP_USER=hello@westringia.com,GEMINI_MODEL=gemini-3.1-pro-preview,CONTACT_DAILY_RESEARCH_CAP=300 \
   --set-secrets=SMTP_PASS=leader-smtp-pass:latest,GOOGLE_GENERATIVE_AI_API_KEY=leader-gemini-key:latest,CRON_SECRET=leader-cron-secret:latest
 ```
 
