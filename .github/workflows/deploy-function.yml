@@ -1,12 +1,15 @@
-# NOTE: GitHub blocks Claude's app token from creating files under
-# .github/workflows/, so this lives one level up. Activate it with:
-#   git mv .github/deploy-function.yml .github/workflows/deploy-function.yml
+# NOTE: GitHub blocks Claude's app token from touching files under
+# .github/workflows/, so this UPDATED copy (it adds leader-westringia to the
+# redeploy list) lives one level up while the previous version keeps running.
+# Activate it with:
+#   git mv -f .github/deploy-function.yml .github/workflows/deploy-function.yml
 #
 # Redeploys the Cloud Functions on pushes to main that touch the code the
-# bundle is built from, or on demand from the Actions tab. Three functions
+# bundle is built from, or on demand from the Actions tab. Four functions
 # share the one bundle (functions/dist), each with its own entry point:
 # leader-outreach (the cron), leader-import-lead and leader-bulk-import
-# (the bulk import fan-out).
+# (the bulk import fan-out), and leader-westringia (the public API behind
+# westringia.com's contact page).
 #
 # Env vars and secrets are deliberately NOT passed to `gcloud functions deploy`:
 # a deploy that omits --set-env-vars / --set-secrets keeps whatever the function
@@ -96,3 +99,4 @@ jobs:
           redeploy leader-outreach    runOutreach 900s 512Mi
           redeploy leader-import-lead importLead  540s 512Mi
           redeploy leader-bulk-import bulkImport  540s 256Mi
+          redeploy leader-westringia  westringia  300s 512Mi
