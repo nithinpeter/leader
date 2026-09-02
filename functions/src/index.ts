@@ -2,7 +2,6 @@ import { http } from '@google-cloud/functions-framework'
 import { CloudTasksClient } from '@google-cloud/tasks'
 import { FieldValue } from 'firebase-admin/firestore'
 import { runCycle, type LeadStore } from '../../packages/core/src/automation/cycle'
-import { notifyOfReply } from '../../packages/core/src/automation/notify'
 import {
   inMemoryLedger,
   type WarmupLedger,
@@ -309,9 +308,6 @@ http('runOutreach', async (req, res) => {
     const report = await runCycle({
       store,
       send,
-      // The only notification: a prospect wrote back. A dry run sends nothing,
-      // not even to our own mailbox.
-      notify: dryRun ? async () => {} : notifyOfReply,
       maxColdPerRun: coldPerRun(),
       // A dry run reads the real ledger, so the cap and the week of the ramp
       // are the ones it would actually face, and writes to a throwaway copy so

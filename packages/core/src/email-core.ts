@@ -24,11 +24,6 @@ export interface SendInput {
   body: string
   /** Message-ID being answered, so their client threads it. */
   inReplyTo?: string | null
-  /**
-   * Send the body as-is, with no branded footer and no HTML part. For
-   * notifications to ourselves; anything going to a prospect leaves this off.
-   */
-  plain?: boolean
 }
 
 /**
@@ -66,12 +61,10 @@ export async function performSend(
     ? { inReplyTo: input.inReplyTo, references: [input.inReplyTo] }
     : {}
 
-  const content = input.plain
-    ? { text: input.body }
-    : {
-        text: `${input.body.trimEnd()}\n\n\n${textFooter()}`,
-        html: renderOutreachHtml(input.body),
-      }
+  const content = {
+    text: `${input.body.trimEnd()}\n\n\n${textFooter()}`,
+    html: renderOutreachHtml(input.body),
+  }
 
   let info: { messageId: string }
   try {
