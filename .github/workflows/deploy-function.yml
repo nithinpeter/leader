@@ -1,8 +1,15 @@
 # NOTE: GitHub blocks Claude's app token from touching files under
-# .github/workflows/, so this UPDATED copy (it adds leader-westringia to the
-# redeploy list) lives one level up while the previous version keeps running.
-# Activate it with:
+# .github/workflows/, so this UPDATED copy lives one level up while the
+# previous version keeps running. Activate it with:
 #   git mv -f .github/deploy-function.yml .github/workflows/deploy-function.yml
+#
+# What changed: the existence check no longer swallows errors. The old
+# `describe >/dev/null 2>&1` treated EVERY failure - permission denied, a
+# wrong project id, an API outage - as "never deployed" and skipped the
+# function with a green tick. That is how every deploy run to date shipped
+# nothing: all four functions were "skipped: never deployed" while they were
+# live and serving. Now only a genuine NOT_FOUND skips; any other describe
+# failure prints gcloud's actual error and fails the job.
 #
 # Redeploys the Cloud Functions on pushes to main that touch the code the
 # bundle is built from, or on demand from the Actions tab. Four functions
@@ -81,11 +88,21 @@ jobs:
           # policy, and changing it needs IAM rights the deployer lacks.
           redeploy() {
             local name="$1" entry="$2" timeout="$3" memory="$4"
-            if ! gcloud functions describe "$name" \
+            # Capture describe's stderr (stdout is noise): only a genuine
+            # NOT_FOUND means "never deployed". Anything else - permission
+            # denied above all - must fail the run, because skipping on it
+            # is how a broken deployer stays green while shipping nothing.
+            local err
+            if ! err=$(gcloud functions describe "$name" \
               --project="${{ secrets.GCP_PROJECT_ID }}" \
-              --gen2 --region="$REGION" >/dev/null 2>&1; then
-              echo "Skipping $name: never deployed (the first deploy is manual, see README.md)"
-              return 0
+              --gen2 --region="$REGION" 2>&1 >/dev/null); then
+              if grep -qiE 'NOT_FOUND|was not found|does not exist' <<<"$err"; then
+                echo "Skipping $name: never deployed (the first deploy is manual, see README.md)"
+                return 0
+              fi
+              echo "::error::Could not check whether $name exists, so it was NOT redeployed. gcloud said:"
+              echo "$err"
+              return 1
             fi
             gcloud functions deploy "$name" \
               --project="${{ secrets.GCP_PROJECT_ID }}" \
@@ -95,6 +112,7 @@ jobs:
               --service-account="leader-cron@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
               --timeout="$timeout" --memory="$memory" \
               --quiet
+            echo "Redeployed $name"
           }
           redeploy leader-outreach    runOutreach 900s 512Mi
           redeploy leader-import-lead importLead  540s 512Mi
